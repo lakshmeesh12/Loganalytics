@@ -1,0 +1,17 @@
+# requirements.txt
+fastapi==0.104.1
+uvicorn==0.24.0
+autogen-agentchat==0.2.0
+snowflake-connector-python==3.6.0
+boto3==1.34.0
+openai==1.3.0
+python-dotenv==1.0.0
+asyncio-mqtt==0.13.0
+aiofiles==23.2.1
+pyyaml
+awscli
+cryptography
+pywin32
+pika
+pymongo
+websockets
