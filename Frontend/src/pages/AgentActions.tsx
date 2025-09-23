@@ -12,7 +12,6 @@ import {
   Shield,
   Wrench,
   Eye,
-  Database,
   CheckCircle,
   XCircle,
   Clock,
@@ -20,16 +19,17 @@ import {
   Trash2,
   ChevronRight,
   Copy,
-  Play,
   RotateCcw,
   AlertTriangle,
   Monitor,
-  GripVertical
+  GripVertical,
+  AlertCircle,
+  Mail
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { connectWebSocket } from "@/api";
+import { connectAgentActionsWebSocket } from "@/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,8 +40,8 @@ import {
 interface AgentAction {
   id: string;
   timestamp: string;
-  agent: "ErrorAnalyzer" | "FixerAgent" | "MonitorAgent" | "LogForwarder";
-  actionType: "error_detected" | "analysis_complete" | "remediation_applied" | "logs_forwarded";
+  agent: "ErrorAnalyzer" | "FixerAgent" | "WindowsMonitor" | "SnowflakeMonitor" | "KubernetesMonitor" | "DatabricksMonitor" | "EmailAgent";
+  actionType: "error_detected" | "analysis_complete" | "remediation_applied" | "logs_forwarded" | "email_sent" | "email_received" | "intent_analyzed";
   status: "success" | "failed" | "in_progress";
   details: string;
   commands?: string[];
@@ -52,7 +52,7 @@ interface AgentAction {
 interface IncidentCycle {
   id: string;
   incidentId: string;
-  dataSource: "Windows" | "Snowflake" | "EKS" | "Linux" | "macOS";
+  dataSource: "Windows" | "Snowflake" | "EKS" | "Linux" | "macOS" | "Databricks";
   timestamp: string;
   errorSummary: string;
   rootCause?: string;
@@ -67,21 +67,30 @@ const dataSourceIcons = {
   Snowflake: "❄️", 
   EKS: "☸️",
   Linux: "🐧",
-  macOS: "🍎"
+  macOS: "🍎",
+  Databricks: "https://i.pinimg.com/736x/65/1d/d6/651dd6bdd503bd0aaba588b9e6439459.jpg"
 };
 
 const agentIcons = {
   ErrorAnalyzer: Shield,
   FixerAgent: Wrench,
-  MonitorAgent: Eye,
-  LogForwarder: Database
+  WindowsMonitor: Eye,
+  SnowflakeMonitor: Eye,
+  KubernetesMonitor: Eye,
+  DatabricksMonitor: Eye,
+  EmailAgent: Mail,
+  default: AlertCircle
 };
 
 const agentColors = {
   ErrorAnalyzer: "text-agent-error bg-agent-error/10",
   FixerAgent: "text-agent-fixer bg-agent-fixer/10",
-  MonitorAgent: "text-agent-monitor bg-agent-monitor/10",
-  LogForwarder: "text-agent-forwarder bg-agent-forwarder/10"
+  WindowsMonitor: "text-agent-monitor bg-agent-monitor/10",
+  SnowflakeMonitor: "text-agent-monitor bg-agent-monitor/10",
+  KubernetesMonitor: "text-agent-monitor bg-agent-monitor/10",
+  DatabricksMonitor: "text-agent-monitor bg-agent-monitor/10",
+  EmailAgent: "text-blue-500 bg-blue-500/10",
+  default: "text-muted-foreground bg-muted/10"
 };
 
 const statusConfig = {
@@ -115,9 +124,26 @@ export default function AgentActions() {
     localStorage.setItem('incidentCycles', JSON.stringify(incidents));
   }, [incidents]);
 
+  // Delete incident function
+  const deleteIncident = useCallback((incidentId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIncidents(prevIncidents => {
+      const updatedIncidents = prevIncidents.filter(incident => incident.id !== incidentId);
+      
+      // If the deleted incident was selected, clear the selection or select another one
+      if (selectedIncident === incidentId) {
+        setSelectedIncident(updatedIncidents.length > 0 ? updatedIncidents[0].id : null);
+      }
+      
+      return updatedIncidents;
+    });
+  }, [selectedIncident]);
+
   // Map WebSocket message status to actionType
   const statusToActionType = (status: string): AgentAction["actionType"] => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "error detected":
         return "error_detected";
       case "analysis complete":
@@ -126,19 +152,30 @@ export default function AgentActions() {
         return "remediation_applied";
       case "logs forwarded":
         return "logs_forwarded";
+      case "email sent":
+        return "email_sent";
+      case "email received":
+        return "email_received";
+      case "intent analyzed":
+        return "intent_analyzed";
       default:
         return "error_detected";
     }
   };
 
   // Map WebSocket message to dataSource
-  const getDataSource = (details: string | undefined): IncidentCycle["dataSource"] => {
+  const getDataSource = (details: string | undefined, agent: AgentAction["agent"]): IncidentCycle["dataSource"] => {
     if (!details || typeof details !== 'string') {
-      return "Windows";
+      return agent === "WindowsMonitor" ? "Windows" : 
+             agent === "SnowflakeMonitor" ? "Snowflake" : 
+             agent === "KubernetesMonitor" ? "EKS" : 
+             agent === "DatabricksMonitor" ? "Databricks" :
+             agent === "EmailAgent" ? "Windows" : "Windows";
     }
-    if (details.includes("Windows") || details.includes("Print Spooler")) return "Windows";
-    if (details.includes("Snowflake")) return "Snowflake";
-    if (details.includes("pod") || details.includes("OOMKilled")) return "EKS";
+    if (agent === "WindowsMonitor" || details.includes("Windows") || details.includes("Print Spooler")) return "Windows";
+    if (agent === "SnowflakeMonitor" || details.includes("Snowflake")) return "Snowflake";
+    if (agent === "KubernetesMonitor" || details.includes("pod") || details.includes("OOMKilled")) return "EKS";
+    if (agent === "DatabricksMonitor" || details.includes("Databricks") || details.includes("protected_table")) return "Databricks";
     if (details.includes("Linux")) return "Linux";
     if (details.includes("macOS") || details.includes("Mac")) return "macOS";
     return "Windows";
@@ -151,7 +188,7 @@ export default function AgentActions() {
       return "completed";
     } else if (lastAction.status === "failed") {
       return "failed";
-    } else if (lastAction.status === "in_progress") {
+    } else if (lastAction.status === "in_progress" || lastAction.actionType === "email_sent" || lastAction.actionType === "intent_analyzed") {
       return "in_progress";
     }
     return "pending";
@@ -174,6 +211,12 @@ export default function AgentActions() {
       errorSummary = details.split("\n")[0] || "Error detected";
     } else if (actionType === "remediation_applied") {
       errorSummary = "Remediation applied";
+    } else if (actionType === "email_sent") {
+      errorSummary = "Email sent for approval";
+    } else if (actionType === "email_received") {
+      errorSummary = "Reply email received";
+    } else if (actionType === "intent_analyzed") {
+      errorSummary = "Reply analyzed";
     }
 
     return { errorSummary, rootCause };
@@ -192,24 +235,22 @@ export default function AgentActions() {
   };
 
   useEffect(() => {
-    const ws = connectWebSocket(
+    const ws = connectAgentActionsWebSocket(
       (message) => {
-        if (message.agent === "LogForwarder") return;
-
         setIncidents((prevIncidents) => {
           const existingIncident = prevIncidents.find(inc => inc.incidentId === message.reference);
           const actionId = `${message.reference}-${Date.now()}`;
           const actionType = statusToActionType(message.status);
-          const dataSource = getDataSource(message.details);
+          const dataSource = getDataSource(message.details, message.agent);
           const { errorSummary, rootCause } = parseDetails(message.details, actionType);
           const commands = extractCommands(message.details);
 
           const newAction: AgentAction = {
             id: actionId,
-            timestamp: message.time,
+            timestamp: message.time || message.timestamp || new Date().toISOString().slice(11, 19),
             agent: message.agent,
             actionType,
-            status: actionType === "remediation_applied" ? "success" : "in_progress",
+            status: actionType === "remediation_applied" || actionType === "email_sent" || actionType === "intent_analyzed" ? "success" : "in_progress",
             details: message.details || "No details provided",
             commands,
             output: actionType === "error_detected" ? message.details : undefined,
@@ -235,7 +276,7 @@ export default function AgentActions() {
               id: message.reference,
               incidentId: message.reference,
               dataSource,
-              timestamp: message.time,
+              timestamp: message.time || message.timestamp || new Date().toISOString().slice(11, 19),
               errorSummary,
               rootCause: actionType === "analysis_complete" ? rootCause : undefined,
               status: getIncidentStatus([newAction]),
@@ -334,7 +375,7 @@ export default function AgentActions() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                {["all", "Windows", "Snowflake", "EKS", "Linux", "macOS"].map((source) => (
+                {["all", "Windows", "Snowflake", "EKS", "Linux", "macOS", "Databricks"].map((source) => (
                   <DropdownMenuItem
                     key={source}
                     onClick={() => setSelectedSource(source)}
@@ -343,7 +384,16 @@ export default function AgentActions() {
                       selectedSource === source ? "bg-primary/10" : ""
                     )}
                   >
-                    {source === "all" ? "All Sources" : `${dataSourceIcons[source as keyof typeof dataSourceIcons]} ${source}`}
+                    {source === "all" ? "All Sources" : (
+                      <>
+                        {source === "Databricks" ? (
+                          <img src={dataSourceIcons[source]} alt="Databricks" className="h-4 w-4 mr-1" />
+                        ) : (
+                          <span className="mr-1">{dataSourceIcons[source as keyof typeof dataSourceIcons]}</span>
+                        )}
+                        {source}
+                      </>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -408,7 +458,11 @@ export default function AgentActions() {
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1">
-                                <span className="text-base">{dataSourceIcons[incident.dataSource]}</span>
+                                {incident.dataSource === "Databricks" ? (
+                                  <img src={dataSourceIcons[incident.dataSource]} alt="Databricks" className="h-4 w-4" />
+                                ) : (
+                                  <span className="text-base">{dataSourceIcons[incident.dataSource]}</span>
+                                )}
                                 <span className="text-xs text-muted-foreground">
                                   {incident.timestamp}
                                 </span>
@@ -418,7 +472,13 @@ export default function AgentActions() {
                               </div>
                               <div className="flex items-center gap-1">
                                 <StatusIcon className="h-3 w-3" />
-                                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-5 w-5 p-0 hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={(e) => deleteIncident(incident.id, e)}
+                                  title="Delete incident"
+                                >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
                               </div>
@@ -460,7 +520,11 @@ export default function AgentActions() {
                 <div className="p-3 border-b border-border bg-card">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{dataSourceIcons[selectedIncidentData.dataSource]}</span>
+                      {selectedIncidentData.dataSource === "Databricks" ? (
+                        <img src={dataSourceIcons[selectedIncidentData.dataSource]} alt="Databricks" className="h-5 w-5" />
+                      ) : (
+                        <span className="text-lg">{dataSourceIcons[selectedIncidentData.dataSource]}</span>
+                      )}
                       <div>
                         <h3 className="font-semibold text-sm">{selectedIncidentData.errorSummary}</h3>
                         <p className="text-xs text-muted-foreground">
@@ -495,7 +559,7 @@ export default function AgentActions() {
                 <ScrollArea className="flex-1">
                   <div className="p-3 space-y-3">
                     {selectedIncidentData.actions.map((action, index) => {
-                      const AgentIcon = agentIcons[action.agent];
+                      const AgentIcon = agentIcons[action.agent] || agentIcons.default;
                       const isLatest = index === selectedIncidentData.actions.length - 1 && 
                                       selectedIncidentData.isLive && 
                                       action.status === "in_progress";
@@ -514,7 +578,7 @@ export default function AgentActions() {
                           )}>
                             <div className={cn(
                               "p-1.5 rounded-lg",
-                              agentColors[action.agent]
+                              agentColors[action.agent] || agentColors.default
                             )}>
                               <AgentIcon className="h-3 w-3" />
                             </div>

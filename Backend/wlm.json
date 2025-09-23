@@ -1,0 +1,15 @@
+[
+  {
+    "query_concurrency": 5,
+    "user_group": ["bi_users"],
+    "queue_type": "user",
+    "concurrency_scaling": "auto",
+    "name": "bi_queue"
+  },
+  {
+    "query_concurrency": 10,
+    "user_group": ["default"],
+    "queue_type": "user",
+    "name": "default_queue"
+  }
+]

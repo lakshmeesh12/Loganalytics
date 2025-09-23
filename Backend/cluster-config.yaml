@@ -1,0 +1,23 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: crash-fix-cluster-2
+  region: ap-south-1
+  version: "1.30"
+
+vpc:
+  cidr: "10.0.0.0/16"  # Default; auto-creates subnets
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["authenticator", "scheduler", "controllerManager", "audit"]  # Enables log group /aws/eks/crash-fix-cluster/cluster
+
+managedNodeGroups:
+  - name: default-ng
+    instanceType: t3.small
+    minSize: 2
+    maxSize: 2
+    desiredCapacity: 2
+    ssh:
+      allow: true  # Optional: For debugging nodes

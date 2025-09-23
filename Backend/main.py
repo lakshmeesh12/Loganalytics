@@ -1,5 +1,4 @@
-#main.py
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query  # Add Query import
 from fastapi.middleware.cors import CORSMiddleware
 import threading
 import sys
@@ -10,6 +9,8 @@ from agent import ErrorAnalyzerAgent
 from fixer import FixerAgent
 from log_forwarder import LogForwarderAgent
 from monitor import MonitorAgent
+from email_agent import EmailAgent
+from utils import setup_logging
 import json
 import asyncio
 from typing import List
@@ -20,20 +21,18 @@ load_dotenv()
 
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8080",  # Your frontend URL
-        "http://127.0.0.1:8080",  # Alternative localhost format
-        "http://localhost:3000",  # Common React dev server port (if you switch)
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:3000",
     ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# WebSocket Connection Manager
 class ConnectionManager:
     def __init__(self):
         self.websocket_clients = set()
@@ -43,7 +42,7 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket):
         if len(self.websocket_clients) >= self.MAX_CLIENTS:
-            await websocket.close(code=1011)  # Server overloaded
+            await websocket.close(code=1011)
             return False
         await websocket.accept()
         self.websocket_clients.add(websocket)
@@ -59,7 +58,10 @@ class ConnectionManager:
         if not self.websocket_clients:
             print("No WebSocket clients to broadcast to", file=sys.stderr)
             return
-        print(f"Broadcasting message: {message}", file=sys.stderr)
+        # Suppress broadcast debug prints for LogForwarder agent
+        suppress_prints = message.get('agent') == 'LogForwarder'
+        if not suppress_prints:
+            print(f"Broadcasting message: {message}", file=sys.stderr)
         clients_to_remove = set()
         for client in self.websocket_clients.copy():
             try:
@@ -68,7 +70,8 @@ class ConnectionManager:
                     clients_to_remove.add(client)
                     continue
                 await client.send_json(message)
-                print(f"Message sent successfully to client {client.client}", file=sys.stderr)
+                if not suppress_prints:
+                    print(f"Message sent successfully to client {client.client}", file=sys.stderr)
             except WebSocketDisconnect:
                 print(f"Client {client.client} disconnected during broadcast", file=sys.stderr)
                 clients_to_remove.add(client)
@@ -91,6 +94,9 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Configure global logging before initializing agents
+setup_logging(ws_manager=manager)
+
 llm_config = {
     "config_list": [
         {
@@ -101,28 +107,63 @@ llm_config = {
     ]
 }
 
-# Initialize agents with error handling
-error_analyzer = None
-fixer_agent = None
-monitor_agent = None
-forwarder_agent = None
-try:
-    error_analyzer = ErrorAnalyzerAgent(name="ErrorAnalyzerAgent", llm_config=llm_config, ws_manager=manager)
-    fixer_agent = FixerAgent(name="FixerAgent", llm_config=llm_config, analyzer_agent=error_analyzer, ws_manager=manager)
-    error_analyzer.fixer_agent = fixer_agent
-    monitor_agent = MonitorAgent(name="MonitorAgent", llm_config=llm_config, analyzer_agent=error_analyzer, ws_manager=manager)
-    forwarder_agent = LogForwarderAgent(name="LogForwarderAgent", llm_config=llm_config)
-except Exception as e:
-    print(f"Failed to initialize one or more agents: {e}", file=sys.stderr)
+@app.get("/start-agents")
+def start_agents(mode: str = Query("semi-autonomous", enum=["semi-autonomous", "autonomous"])):
+    try:
+        global error_analyzer, fixer_agent, monitor_agent, forwarder_agent, email_agent, user_proxy, group_chat, chat_manager
 
-user_proxy = UserProxyAgent(
-    name="Supervisor",
-    code_execution_config={"use_docker": False},
-    human_input_mode="NEVER"
-)
+        # Initialize agents based on mode
+        error_analyzer = ErrorAnalyzerAgent(name="ErrorAnalyzerAgent", llm_config=llm_config, ws_manager=manager)
+        fixer_agent = FixerAgent(name="FixerAgent", llm_config=llm_config, analyzer_agent=error_analyzer, ws_manager=manager)
+        error_analyzer.fixer_agent = fixer_agent
+        forwarder_agent = LogForwarderAgent(name="LogForwarderAgent", llm_config=llm_config, ws_manager=manager)
 
-group_chat = GroupChat(agents=[user_proxy, error_analyzer, fixer_agent], messages=[], max_round=5)
-chat_manager = GroupChatManager(groupchat=group_chat, llm_config=llm_config)
+        if mode == "semi-autonomous":
+            email_agent = EmailAgent(name="EmailAgent", llm_config=llm_config, analyzer_agent=error_analyzer, ws_manager=manager)
+            monitor_agent = MonitorAgent(
+                name="MonitorAgent",
+                llm_config=llm_config,
+                analyzer_agent=error_analyzer,
+                email_agent=email_agent,
+                ws_manager=manager,
+                mode=mode
+            )
+            # Initialize group chat for semi-autonomous mode
+            user_proxy = UserProxyAgent(
+                name="Supervisor",
+                code_execution_config={"use_docker": False},
+                human_input_mode="NEVER"
+            )
+            group_chat = GroupChat(agents=[user_proxy, error_analyzer, fixer_agent, email_agent], messages=[], max_round=5)
+            chat_manager = GroupChatManager(groupchat=group_chat, llm_config=llm_config)
+        else:  # autonomous mode
+            monitor_agent = MonitorAgent(
+                name="MonitorAgent",
+                llm_config=llm_config,
+                analyzer_agent=error_analyzer,
+                email_agent=None,  # No EmailAgent in autonomous mode
+                ws_manager=manager,
+                mode=mode
+            )
+            user_proxy = None
+            group_chat = None
+            chat_manager = None
+
+        # Start agents
+        if forwarder_agent and forwarder_agent.conn:
+            threading.Thread(target=forwarder_agent.run, daemon=True).start()
+        if monitor_agent:
+            threading.Thread(target=monitor_agent.run, daemon=True).start()
+        if mode == "semi-autonomous" and email_agent:
+            threading.Thread(target=email_agent.run, daemon=True).start()
+        if error_analyzer:
+            threading.Thread(target=error_analyzer.run, daemon=True).start()
+        if fixer_agent:
+            threading.Thread(target=fixer_agent.run, daemon=True).start()
+
+        return {"status": f"All agents started successfully in {mode} mode"}
+    except Exception as e:
+        return {"status": f"Failed to start agents: {str(e)}"}
 
 @app.get("/start-logging")
 def start_logging():
@@ -133,22 +174,6 @@ def start_logging():
         )
         return {"status": "Chat initiated"}
     return {"status": "Failed to initiate chat due to missing agents"}
-
-@app.get("/start-agents")
-def start_agents():
-    try:
-        if forwarder_agent and forwarder_agent.conn:
-            threading.Thread(target=forwarder_agent.run, daemon=True).start()
-        if monitor_agent:
-            threading.Thread(target=monitor_agent.run, daemon=True).start()
-        if error_analyzer:
-            threading.Thread(target=error_analyzer.run, daemon=True).start()
-        if fixer_agent:
-            threading.Thread(target=fixer_agent.run, daemon=True).start()
-        return {"status": "All agents started successfully"}
-    except Exception as e:
-        return {"status": f"Failed to start agents: {str(e)}"}
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -194,3 +219,432 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket connection setup error: {str(e)}", file=sys.stderr)
         manager.disconnect(websocket)
+
+# main.py
+from fastapi import FastAPI, HTTPException, Query, Path
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+from bson import ObjectId
+import os
+from enum import Enum
+
+# MongoDB connection
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DATABASE_NAME = "rules_engine"
+
+client = AsyncIOMotorClient(MONGODB_URL)
+database = client[DATABASE_NAME]
+rules_collection = database["rules"]
+predefined_rules_collection = database["predefined_rules"]
+
+# Enums
+class DataSource(str, Enum):
+    SNOWFLAKE = "snowflake"
+    EKS = "eks"
+    WINDOWS = "windows"
+    LINUX = "linux"
+    DATABRICKS = "databricks"
+
+class RuleType(str, Enum):
+    PREDEFINED = "Predefined"
+    CUSTOM = "Custom"
+
+class RuleStatus(str, Enum):
+    ACTIVE = "Active"
+    INACTIVE = "Inactive"
+
+class Priority(str, Enum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+
+class ActionType(str, Enum):
+    NOTIFY = "Notify Only"
+    ANALYZE = "Trigger ErrorAnalyzer"
+    FIX = "Trigger FixerAgent"
+    ANALYZE_FIX = "Analyze & Fix"
+
+class NotificationType(str, Enum):
+    EMAIL = "Email"
+    SLACK = "Slack"
+    BOTH = "Both"
+
+from pydantic import GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
+
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return ObjectId(v)
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        schema = handler(core_schema)
+        schema.update(type="string", example="650c0a4b5d6e2b7f9c9e1234")
+        return schema
+
+class Rule(BaseModel):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    name: str
+    type: RuleType
+    data_source: DataSource
+    condition: str
+    action: ActionType
+    status: RuleStatus = RuleStatus.ACTIVE
+    priority: Priority = Priority.MEDIUM
+    notification: Optional[NotificationType] = NotificationType.EMAIL
+    real_time: bool = True
+    last_triggered: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+class PredefinedRule(BaseModel):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    name: str
+    data_source: DataSource
+    condition: str
+    action: ActionType
+    priority: Priority = Priority.MEDIUM
+    description: Optional[str] = None
+
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+class CreateRuleRequest(BaseModel):
+    name: str
+    type: RuleType
+    data_source: DataSource
+    condition: str
+    action: ActionType
+    priority: Priority = Priority.MEDIUM
+    notification: NotificationType = NotificationType.EMAIL
+    real_time: bool = True
+
+class UpdateRuleRequest(BaseModel):
+    name: Optional[str] = None
+    condition: Optional[str] = None
+    action: Optional[ActionType] = None
+    status: Optional[RuleStatus] = None
+    priority: Optional[Priority] = None
+    notification: Optional[NotificationType] = None
+    real_time: Optional[bool] = None
+
+class NLPParseRequest(BaseModel):
+    text: str
+
+class NLPParseResponse(BaseModel):
+    data_source: DataSource
+    condition: str
+    action: ActionType
+    priority: Priority
+    notification: NotificationType
+
+# Helper function to convert MongoDB document to dict
+def rule_helper(rule) -> dict:
+    return {
+        "id": str(rule["_id"]),
+        "name": rule["name"],
+        "type": rule["type"],
+        "data_source": rule["data_source"],
+        "condition": rule["condition"],
+        "action": rule["action"],
+        "status": rule["status"],
+        "priority": rule["priority"],
+        "notification": rule.get("notification", "Email"),
+        "real_time": rule.get("real_time", True),
+        "last_triggered": rule.get("last_triggered"),
+        "created_at": rule["created_at"],
+        "updated_at": rule["updated_at"]
+    }
+
+def predefined_rule_helper(rule) -> dict:
+    return {
+        "id": str(rule["_id"]),
+        "name": rule["name"],
+        "data_source": rule["data_source"],
+        "condition": rule["condition"],
+        "action": rule["action"],
+        "priority": rule["priority"],
+        "description": rule.get("description", "")
+    }
+
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return {"message": "Rules Engine API"}
+
+# Rules CRUD Operations
+
+@app.get("/api/rules", response_model=List[dict])
+async def get_rules(
+    data_source: Optional[DataSource] = Query(None, description="Filter by data source"),
+    status: Optional[RuleStatus] = Query(None, description="Filter by status"),
+    type: Optional[RuleType] = Query(None, description="Filter by type"),
+    search: Optional[str] = Query(None, description="Search in name or condition")
+):
+    """Get all rules with optional filtering"""
+    filter_query = {}
+    
+    if data_source:
+        filter_query["data_source"] = data_source
+    if status:
+        filter_query["status"] = status
+    if type:
+        filter_query["type"] = type
+    if search:
+        filter_query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"condition": {"$regex": search, "$options": "i"}}
+        ]
+    
+    rules = []
+    async for rule in rules_collection.find(filter_query).sort("created_at", -1):
+        rules.append(rule_helper(rule))
+    
+    return rules
+
+@app.get("/api/rules/{rule_id}", response_model=dict)
+async def get_rule(rule_id: str = Path(..., description="Rule ID")):
+    """Get a specific rule by ID"""
+    if not ObjectId.is_valid(rule_id):
+        raise HTTPException(status_code=400, detail="Invalid rule ID")
+    
+    rule = await rules_collection.find_one({"_id": ObjectId(rule_id)})
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    return rule_helper(rule)
+
+@app.post("/api/rules", response_model=dict, status_code=201)
+async def create_rule(rule: CreateRuleRequest):
+    """Create a new rule"""
+    rule_dict = rule.dict()
+    rule_dict["created_at"] = datetime.utcnow()
+    rule_dict["updated_at"] = datetime.utcnow()
+    rule_dict["status"] = RuleStatus.ACTIVE
+    
+    result = await rules_collection.insert_one(rule_dict)
+    created_rule = await rules_collection.find_one({"_id": result.inserted_id})
+    
+    return rule_helper(created_rule)
+
+@app.put("/api/rules/{rule_id}", response_model=dict)
+async def update_rule(rule_id: str, rule_update: UpdateRuleRequest):
+    """Update an existing rule"""
+    if not ObjectId.is_valid(rule_id):
+        raise HTTPException(status_code=400, detail="Invalid rule ID")
+    
+    update_data = {k: v for k, v in rule_update.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No update data provided")
+    
+    update_data["updated_at"] = datetime.utcnow()
+    
+    result = await rules_collection.update_one(
+        {"_id": ObjectId(rule_id)},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    updated_rule = await rules_collection.find_one({"_id": ObjectId(rule_id)})
+    return rule_helper(updated_rule)
+
+@app.delete("/api/rules/{rule_id}")
+async def delete_rule(rule_id: str):
+    """Delete a rule"""
+    if not ObjectId.is_valid(rule_id):
+        raise HTTPException(status_code=400, detail="Invalid rule ID")
+    
+    result = await rules_collection.delete_one({"_id": ObjectId(rule_id)})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    return {"message": "Rule deleted successfully"}
+
+@app.patch("/api/rules/{rule_id}/toggle", response_model=dict)
+async def toggle_rule_status(rule_id: str):
+    """Toggle rule status between Active and Inactive"""
+    if not ObjectId.is_valid(rule_id):
+        raise HTTPException(status_code=400, detail="Invalid rule ID")
+    
+    rule = await rules_collection.find_one({"_id": ObjectId(rule_id)})
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    new_status = RuleStatus.INACTIVE if rule["status"] == RuleStatus.ACTIVE else RuleStatus.ACTIVE
+    
+    await rules_collection.update_one(
+        {"_id": ObjectId(rule_id)},
+        {"$set": {"status": new_status, "updated_at": datetime.utcnow()}}
+    )
+    
+    updated_rule = await rules_collection.find_one({"_id": ObjectId(rule_id)})
+    return rule_helper(updated_rule)
+
+# Predefined Rules Operations
+
+@app.get("/api/predefined-rules", response_model=List[dict])
+async def get_predefined_rules(
+    data_source: Optional[DataSource] = Query(None, description="Filter by data source")
+):
+    """Get predefined rules, optionally filtered by data source"""
+    filter_query = {}
+    if data_source:
+        filter_query["data_source"] = data_source
+    
+    rules = []
+    async for rule in predefined_rules_collection.find(filter_query):
+        rules.append(predefined_rule_helper(rule))
+    
+    return rules
+
+@app.post("/api/predefined-rules/{predefined_rule_id}/activate", response_model=dict, status_code=201)
+async def activate_predefined_rule(predefined_rule_id: str):
+    """Activate a predefined rule by creating a new rule from it"""
+    if not ObjectId.is_valid(predefined_rule_id):
+        raise HTTPException(status_code=400, detail="Invalid predefined rule ID")
+    
+    predefined_rule = await predefined_rules_collection.find_one({"_id": ObjectId(predefined_rule_id)})
+    if not predefined_rule:
+        raise HTTPException(status_code=404, detail="Predefined rule not found")
+    
+    # Create new rule from predefined rule
+    new_rule = {
+        "name": predefined_rule["name"],
+        "type": RuleType.PREDEFINED,
+        "data_source": predefined_rule["data_source"],
+        "condition": predefined_rule["condition"],
+        "action": predefined_rule["action"],
+        "priority": predefined_rule["priority"],
+        "status": RuleStatus.ACTIVE,
+        "notification": NotificationType.EMAIL,
+        "real_time": True,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    result = await rules_collection.insert_one(new_rule)
+    created_rule = await rules_collection.find_one({"_id": result.inserted_id})
+    
+    return rule_helper(created_rule)
+
+# NLP Parse Endpoint (Mock implementation)
+
+@app.post("/api/parse-nlp", response_model=NLPParseResponse)
+async def parse_nlp_rule(request: NLPParseRequest):
+    """Parse natural language text into a structured rule (mock implementation)"""
+    text = request.text.lower()
+    
+    # Simple keyword-based parsing (replace with actual NLP service)
+    data_source = DataSource.SNOWFLAKE
+    if "eks" in text or "kubernetes" in text or "pod" in text:
+        data_source = DataSource.EKS
+    elif "windows" in text or "event id" in text:
+        data_source = DataSource.WINDOWS
+    elif "linux" in text or "syslog" in text:
+        data_source = DataSource.LINUX
+    elif "databricks" in text or "cluster" in text or "spark" in text or "notebook" in text:
+        data_source = DataSource.DATABRICKS
+    
+    priority = Priority.MEDIUM
+    if "critical" in text or "urgent" in text:
+        priority = Priority.HIGH
+    elif "low" in text or "minor" in text:
+        priority = Priority.LOW
+    
+    action = ActionType.NOTIFY
+    if "fix" in text or "resolve" in text:
+        action = ActionType.FIX
+    elif "analyze" in text:
+        action = ActionType.ANALYZE
+    
+    # Extract condition (simplified)
+    condition = f"Parsed from: {request.text[:100]}"
+    
+    return NLPParseResponse(
+        data_source=data_source,
+        condition=condition,
+        action=action,
+        priority=priority,
+        notification=NotificationType.EMAIL
+    )
+
+# Data Source Statistics
+
+@app.get("/api/stats/rules-by-source")
+async def get_rules_stats_by_source():
+    """Get rule statistics grouped by data source"""
+    pipeline = [
+        {
+            "$group": {
+                "_id": "$data_source",
+                "total": {"$sum": 1},
+                "active": {
+                    "$sum": {
+                        "$cond": [{"$eq": ["$status", "Active"]}, 1, 0]
+                    }
+                },
+                "inactive": {
+                    "$sum": {
+                        "$cond": [{"$eq": ["$status", "Inactive"]}, 1, 0]
+                    }
+                }
+            }
+        }
+    ]
+    
+    stats = []
+    async for stat in rules_collection.aggregate(pipeline):
+        stats.append({
+            "data_source": stat["_id"],
+            "total": stat["total"],
+            "active": stat["active"],
+            "inactive": stat["inactive"]
+        })
+    
+    return stats
+
+# Health check endpoint
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        await database.command("ping")
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

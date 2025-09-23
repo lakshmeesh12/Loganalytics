@@ -1,0 +1,20 @@
+{
+    "b9b6a5f1-5ad6-455d-9483-46eac2faae48": {
+        "error_message": "Databricks Query Failure Detected\nSource: Databricks\nLogGroup: /aws/databricks/audit-logs\nQueryID: 01f097e1-173e-1cd9-b8ed-1964f7a0ae37\nUser: poc@quadranttechnologies.com\nQueryText: INSERT INTO main.default.protected_table VALUES (4, 'Unauthorized Write')\nStartTime: None\nEndTime: None\nErrorMessage: Failed to resolve path\nReference: b9b6a5f1-5ad6-455d-9483-46eac2faae48",
+        "source": "databricks",
+        "message_id": "CAH+yga=Zxe_hWFHbh3SNY2WiA7JEyK_UsEjJYfUVTYfCLFd+TQ@mail.gmail.com",
+        "timestamp": "2025-09-22T23:52:52.001636"
+    },
+    "b0264dca-d6af-4d2a-95fd-cc3b449f35ad": {
+        "error_message": "{\"source\": \"Databricks\", \"log_group\": \"/aws/databricks/audit-logs\", \"query_id\": \"01f0984c-8ce3-1015-ae00-935638cd2c73\", \"user_name\": \"poc@quadranttechnologies.com\", \"table_name\": \"main.default.protected_table\", \"query_text\": \"INSERT INTO main.default.protected_table VALUES (5, 'Unauthorized Write')\", \"start_time_ms\": null, \"end_time_ms\": null, \"error_message\": \"Failed to resolve path\", \"required_permission\": \"MODIFY\", \"reference\": \"b0264dca-d6af-4d2a-95fd-cc3b449f35ad\"}",
+        "source": "databricks",
+        "message_id": "CAH+ygakt1QyFmevk85tFcuPiMwhSEsTKCV0Dj=rEf3LsC1FrEQ@mail.gmail.com",
+        "timestamp": "2025-09-23T12:42:06.735359"
+    },
+    "e4debff6-8949-46c7-9aba-f7277a5ab22b": {
+        "error_message": "Databricks Query Failure Detected\nSource: Databricks\nLogGroup: /aws/databricks/audit-logs\nQueryID: 01f09850-57ae-14b0-b73e-e2412814fdb9\nUser: poc@quadranttechnologies.com\nQueryText: INSERT INTO main.default.protected_table VALUES (5, 'Unauthorized Write')\nStartTime: None\nEndTime: None\nErrorMessage: Failed to resolve path\nReference: e4debff6-8949-46c7-9aba-f7277a5ab22b",
+        "source": "databricks",
+        "message_id": "CAH+ygamc6uZmDF4FDWNP1bVSREMuDwRNHg=2CuWF4aT4dDbvTg@mail.gmail.com",
+        "timestamp": "2025-09-23T13:09:22.160452"
+    }
+}

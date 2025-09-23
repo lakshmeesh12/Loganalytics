@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 interface Configuration {
   id: string;
   name: string;
-  type: 'snowflake' | 'eks' | 'windows' | 'linux' | 'macos' | 'datadog';
+  type: 'snowflake' | 'eks' | 'windows' | 'linux' | 'datadog' | 'databricks';
   status: 'active' | 'inactive' | 'testing';
   lastUpdated: string;
   config: Record<string, any>;
@@ -38,7 +38,7 @@ const mockConfigurations: Configuration[] = [
     name: 'Production Snowflake',
     type: 'snowflake',
     status: 'active',
-    lastUpdated: '2025-01-27 14:30:00',
+    lastUpdated: '2025-09-23 17:30:00',
     config: { url: 'acme.snowflakecomputing.com', username: 'admin' }
   },
   {
@@ -46,7 +46,7 @@ const mockConfigurations: Configuration[] = [
     name: 'EKS Cluster Main',
     type: 'eks',
     status: 'active',
-    lastUpdated: '2025-01-27 13:15:00',
+    lastUpdated: '2025-09-23 16:15:00',
     config: { clusterName: 'main-cluster', region: 'us-east-1' }
   },
   {
@@ -54,7 +54,7 @@ const mockConfigurations: Configuration[] = [
     name: 'Windows Server 01',
     type: 'windows',
     status: 'inactive',
-    lastUpdated: '2025-01-26 09:45:00',
+    lastUpdated: '2025-09-23 15:45:00',
     config: { hostname: '192.168.1.100', username: 'administrator' }
   },
   {
@@ -62,7 +62,7 @@ const mockConfigurations: Configuration[] = [
     name: 'Production DataDog',
     type: 'datadog',
     status: 'inactive',
-    lastUpdated: '2025-01-26 10:00:00',
+    lastUpdated: '2025-09-23 16:00:00',
     config: { 
       apiKey: 'dd_api_1234567890', 
       appKey: 'dd_app_0987654321', 
@@ -70,6 +70,21 @@ const mockConfigurations: Configuration[] = [
       site: 'us1.datadoghq.com',
       rumEnabled: true,
       apmEnabled: false
+    }
+  },
+  {
+    id: '5',
+    name: 'Databricks Workspace',
+    type: 'databricks',
+    status: 'active',
+    lastUpdated: '2025-09-23 17:45:00',
+    config: { 
+      workspaceUrl: 'https://adb-1234567890.azuredatabricks.net', 
+      token: 'dapi_abcdef1234567890',
+      clusterId: '0923-164500-xyz123',
+      workspaceId: '1234567890',
+      logPath: 'dbfs:/databricks/logs',
+      logFormat: 'JSON'
     }
   }
 ];
@@ -120,16 +135,6 @@ export default function Configurations() {
     logFormat: 'Syslog'
   });
 
-  const [macosForm, setMacosForm] = useState({
-    name: '',
-    hostname: '',
-    username: '',
-    password: '',
-    keyFile: '',
-    systemLogPath: '/var/log/system.log',
-    logFormat: 'Syslog'
-  });
-
   const [datadogForm, setDatadogForm] = useState({
     name: '',
     apiKey: '',
@@ -140,16 +145,26 @@ export default function Configurations() {
     apmEnabled: false
   });
 
+  const [databricksForm, setDatabricksForm] = useState({
+    name: '',
+    workspaceUrl: '',
+    token: '',
+    clusterId: '',
+    workspaceId: '',
+    logPath: 'dbfs:/databricks/logs',
+    logFormat: 'JSON'
+  });
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
-        return <Badge variant="default" className="bg-success text-success-foreground"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>;
+        return <Badge variant="default" className="text-xs px-1.5 py-0.5 bg-success text-success-foreground"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>;
       case 'inactive':
-        return <Badge variant="secondary"><XCircle className="w-3 h-3 mr-1" />Inactive</Badge>;
+        return <Badge variant="secondary" className="text-xs px-1.5 py-0.5"><XCircle className="w-3 h-3 mr-1" />Inactive</Badge>;
       case 'testing':
-        return <Badge variant="outline"><AlertCircle className="w-3 h-3 mr-1" />Testing</Badge>;
+        return <Badge variant="outline" className="text-xs px-1.5 py-0.5"><AlertCircle className="w-3 h-3 mr-1" />Testing</Badge>;
       default:
-        return <Badge variant="secondary">Unknown</Badge>;
+        return <Badge variant="secondary" className="text-xs px-1.5 py-0.5">Unknown</Badge>;
     }
   };
 
@@ -190,11 +205,11 @@ export default function Configurations() {
       case 'linux':
         formData = linuxForm;
         break;
-      case 'macos':
-        formData = macosForm;
-        break;
       case 'datadog':
         formData = datadogForm;
+        break;
+      case 'databricks':
+        formData = databricksForm;
         break;
       default:
         return;
@@ -234,11 +249,11 @@ export default function Configurations() {
       case 'linux':
         setLinuxForm({ name: '', hostname: '', username: '', password: '', keyFile: '', syslogPath: '/var/log/syslog', logFormat: 'Syslog' });
         break;
-      case 'macos':
-        setMacosForm({ name: '', hostname: '', username: '', password: '', keyFile: '', systemLogPath: '/var/log/system.log', logFormat: 'Syslog' });
-        break;
       case 'datadog':
         setDatadogForm({ name: '', apiKey: '', appKey: '', clientToken: '', site: 'us1.datadoghq.com', rumEnabled: false, apmEnabled: false });
+        break;
+      case 'databricks':
+        setDatabricksForm({ name: '', workspaceUrl: '', token: '', clusterId: '', workspaceId: '', logPath: 'dbfs:/databricks/logs', logFormat: 'JSON' });
         break;
     }
 
@@ -263,19 +278,19 @@ export default function Configurations() {
   const getPlatformIcon = (type: string) => {
     switch (type) {
       case 'snowflake':
-        return <img src="https://companieslogo.com/img/orig/SNOW-35164165.png?t=1720244494" alt="Snowflake" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />;
+        return <img src="https://companieslogo.com/img/orig/SNOW-35164165.png?t=1720244494" alt="Snowflake" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />;
       case 'eks':
-        return <img src="https://res.cloudinary.com/hy4kyit2a/f_auto,fl_lossy,q_70/learn/modules/core-aws-services/explore-cloud-compute-with-aws/images/bfc2e1ee7013936df78568067c7ffeb6_30-e-1482-c-3561-4860-aaf-2-57-bee-7501266.png" alt="AWS EKS" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />;
+        return <img src="https://res.cloudinary.com/hy4kyit2a/f_auto,fl_lossy,q_70/learn/modules/core-aws-services/explore-cloud-compute-with-aws/images/bfc2e1ee7013936df78568067c7ffeb6_30-e-1482-c-3561-4860-aaf-2-57-bee-7501266.png" alt="AWS EKS" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />;
       case 'windows':
-        return <img src="https://th.bing.com/th/id/R.b57d432bf7e29c5738e5fe80278f1258?rik=auCFqC7NXcnbww&riu=http%3a%2f%2fgetdrawings.com%2ffree-icon%2fmicrosoft-windows-icon-63.png&ehk=6%2faDRtRmsK%2fy3Z4gZN%2b5J%2bO%2bGv2Ax8h4kiK7q32D3mc%3d&risl=&pid=ImgRaw&r=0" alt="Windows" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />;
+        return <img src="https://th.bing.com/th/id/R.b57d432bf7e29c5738e5fe80278f1258?rik=auCFqC7NXcnbww&riu=http%3a%2f%2fgetdrawings.com%2ffree-icon%2fmicrosoft-windows-icon-63.png&ehk=6%2faDRtRmsK%2fy3Z4gZN%2b5J%2bO%2bGv2Ax8h4kiK7q32D3mc%3d&risl=&pid=ImgRaw&r=0" alt="Windows" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />;
       case 'linux':
-        return <img src="https://cdn.iconscout.com/icon/free/png-256/linux-3521549-2944967.png" alt="Linux" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />;
-      case 'macos':
-        return <img src="https://www.pinclipart.com/picdir/big/236-2364339_macos-icon-clipart.png" alt="macOS" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />;
+        return <img src="https://cdn.iconscout.com/icon/free/png-256/linux-3521549-2944967.png" alt="Linux" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />;
       case 'datadog':
-        return <img src="https://www.datadoghq.com/favicon.ico" alt="DataDog" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />;
+        return <img src="https://www.datadoghq.com/favicon.ico" alt="DataDog" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />;
+      case 'databricks':
+        return <img src="https://i.pinimg.com/736x/65/1d/d6/651dd6bdd503bd0aaba588b9e6439459.jpg" alt="Databricks" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />;
       default:
-        return <Settings className="w-5 h-5" />;
+        return <Settings className="w-3 h-3" />;
     }
   };
 
@@ -283,18 +298,18 @@ export default function Configurations() {
     <AppLayout title="Data Source Configurations" breadcrumbs={["Configurations"]}>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold">Data Source Configurations</h2>
-            <p className="text-muted-foreground">Configure and manage your data sources for log monitoring</p>
+            <h2 className="text-base font-medium">Data Source Configurations</h2>
+            <p className="text-sm text-muted-foreground">Configure and manage your data sources for log monitoring</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Upload className="w-4 h-4 mr-2" />
+            <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+              <Upload className="w-3 h-3 mr-2" />
               Import Config
             </Button>
-            <Button>
-              <Save className="w-4 h-4 mr-2" />
+            <Button className="text-xs h-8 px-3 py-1.5">
+              <Save className="w-3 h-3 mr-2" />
               Save All
             </Button>
           </div>
@@ -302,30 +317,30 @@ export default function Configurations() {
 
         {/* Configuration Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="snowflake" className="flex items-center gap-2">
-              <img src="https://companieslogo.com/img/orig/SNOW-35164165.png?t=1720244494" alt="Snowflake" className="w-6 h-6 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-              Snowflake
+          <TabsList className="grid w-full grid-cols-6 text-xs h-8">
+            <TabsTrigger value="snowflake" className="gap-1 text-xs px-2 py-1">
+              <img src="https://companieslogo.com/img/orig/SNOW-35164165.png?t=1720244494" alt="Snowflake" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+              <span className="hidden sm:inline">Snowflake</span>
             </TabsTrigger>
-            <TabsTrigger value="eks" className="flex items-center gap-2">
-              <img src="https://res.cloudinary.com/hy4kyit2a/f_auto,fl_lossy,q_70/learn/modules/core-aws-services/explore-cloud-compute-with-aws/images/bfc2e1ee7013936df78568067c7ffeb6_30-e-1482-c-3561-4860-aaf-2-57-bee-7501266.png" alt="AWS EKS" className="w-6 h-6 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-              AWS EKS
+            <TabsTrigger value="eks" className="gap-1 text-xs px-2 py-1">
+              <img src="https://res.cloudinary.com/hy4kyit2a/f_auto,fl_lossy,q_70/learn/modules/core-aws-services/explore-cloud-compute-with-aws/images/bfc2e1ee7013936df78568067c7ffeb6_30-e-1482-c-3561-4860-aaf-2-57-bee-7501266.png" alt="AWS EKS" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+              <span className="hidden sm:inline">AWS EKS</span>
             </TabsTrigger>
-            <TabsTrigger value="windows" className="flex items-center gap-2">
-              <img src="https://th.bing.com/th/id/R.b57d432bf7e29c5738e5fe80278f1258?rik=auCFqC7NXcnbww&riu=http%3a%2f%2fgetdrawings.com%2ffree-icon%2fmicrosoft-windows-icon-63.png&ehk=6%2faDRtRmsK%2fy3Z4gZN%2b5J%2bO%2bGv2Ax8h4kiK7q32D3mc%3d&risl=&pid=ImgRaw&r=0" alt="Windows" className="w-6 h-6 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-              Windows
+            <TabsTrigger value="windows" className="gap-1 text-xs px-2 py-1">
+              <img src="https://th.bing.com/th/id/R.b57d432bf7e29c5738e5fe80278f1258?rik=auCFqC7NXcnbww&riu=http%3a%2f%2fgetdrawings.com%2ffree-icon%2fmicrosoft-windows-icon-63.png&ehk=6%2faDRtRmsK%2fy3Z4gZN%2b5J%2bO%2bGv2Ax8h4kiK7q32D3mc%3d&risl=&pid=ImgRaw&r=0" alt="Windows" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+              <span className="hidden sm:inline">Windows</span>
             </TabsTrigger>
-            <TabsTrigger value="linux" className="flex items-center gap-2">
-              <img src="https://cdn.iconscout.com/icon/free/png-256/linux-3521549-2944967.png" alt="Linux" className="w-6 h-6 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-              Linux
+            <TabsTrigger value="linux" className="gap-1 text-xs px-2 py-1">
+              <img src="https://cdn.iconscout.com/icon/free/png-256/linux-3521549-2944967.png" alt="Linux" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+              <span className="hidden sm:inline">Linux</span>
             </TabsTrigger>
-            <TabsTrigger value="macos" className="flex items-center gap-2">
-              <img src="https://www.pinclipart.com/picdir/big/236-2364339_macos-icon-clipart.png" alt="macOS" className="w-6 h-6 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-              macOS
+            <TabsTrigger value="datadog" className="gap-1 text-xs px-2 py-1">
+              <img src="https://www.datadoghq.com/favicon.ico" alt="DataDog" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+              <span className="hidden sm:inline">DataDog</span>
             </TabsTrigger>
-            <TabsTrigger value="datadog" className="flex items-center gap-2">
-              <img src="https://www.datadoghq.com/favicon.ico" alt="DataDog" className="w-6 h-6 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-              DataDog
+            <TabsTrigger value="databricks" className="gap-1 text-xs px-2 py-1">
+              <img src="https://i.pinimg.com/736x/65/1d/d6/651dd6bdd503bd0aaba588b9e6439459.jpg" alt="Databricks" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+              <span className="hidden sm:inline">Databricks</span>
             </TabsTrigger>
           </TabsList>
 
@@ -333,97 +348,105 @@ export default function Configurations() {
           <TabsContent value="snowflake" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <img src="https://companieslogo.com/img/orig/SNOW-35164165.png?t=1720244494" alt="Snowflake" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <img src="https://companieslogo.com/img/orig/SNOW-35164165.png?t=1720244494" alt="Snowflake" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
                   Snowflake Configuration
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Configure Snowflake data warehouse connections for query log monitoring
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="sf-name">Configuration Name *</Label>
+                    <Label htmlFor="sf-name" className="text-xs">Configuration Name *</Label>
                     <Input
                       id="sf-name"
                       placeholder="e.g., Production Snowflake"
                       value={snowflakeForm.name}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-url">Account URL *</Label>
+                    <Label htmlFor="sf-url" className="text-xs">Account URL *</Label>
                     <Input
                       id="sf-url"
                       placeholder="account.snowflakecomputing.com"
                       value={snowflakeForm.url}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, url: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-username">Username *</Label>
+                    <Label htmlFor="sf-username" className="text-xs">Username *</Label>
                     <Input
                       id="sf-username"
                       placeholder="username"
                       value={snowflakeForm.username}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, username: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-password">Password *</Label>
+                    <Label htmlFor="sf-password" className="text-xs">Password *</Label>
                     <Input
                       id="sf-password"
                       type="password"
                       placeholder="••••••••"
                       value={snowflakeForm.password}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, password: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-role">Role</Label>
+                    <Label htmlFor="sf-role" className="text-xs">Role</Label>
                     <Input
                       id="sf-role"
                       placeholder="ACCOUNTADMIN"
                       value={snowflakeForm.role}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, role: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-warehouse">Warehouse</Label>
+                    <Label htmlFor="sf-warehouse" className="text-xs">Warehouse</Label>
                     <Input
                       id="sf-warehouse"
                       placeholder="COMPUTE_WH"
                       value={snowflakeForm.warehouse}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, warehouse: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-database">Database</Label>
+                    <Label htmlFor="sf-database" className="text-xs">Database</Label>
                     <Input
                       id="sf-database"
                       placeholder="PRODUCTION"
                       value={snowflakeForm.database}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, database: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sf-schema">Schema</Label>
+                    <Label htmlFor="sf-schema" className="text-xs">Schema</Label>
                     <Input
                       id="sf-schema"
                       placeholder="PUBLIC"
                       value={snowflakeForm.schema}
                       onChange={(e) => setSnowflakeForm(prev => ({ ...prev, schema: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => saveConfiguration('snowflake')}>
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={() => saveConfiguration('snowflake')} className="text-xs h-8 px-3 py-1.5">
+                    <Save className="w-3 h-3 mr-2" />
                     Save Configuration
                   </Button>
-                  <Button variant="outline">
-                    <TestTube className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <TestTube className="w-3 h-3 mr-2" />
                     Test Connection
                   </Button>
                 </div>
@@ -433,35 +456,35 @@ export default function Configurations() {
             {/* Snowflake Configurations Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Saved Snowflake Configurations</CardTitle>
+                <CardTitle className="text-base font-medium">Saved Snowflake Configurations</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>URL</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="text-xs">
+                      <TableHead className="text-xs font-medium">Name</TableHead>
+                      <TableHead className="text-xs font-medium">URL</TableHead>
+                      <TableHead className="text-xs font-medium">Status</TableHead>
+                      <TableHead className="text-xs font-medium">Last Updated</TableHead>
+                      <TableHead className="text-xs font-medium">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {getFilteredConfigurations('snowflake').map((config) => (
-                      <TableRow key={config.id}>
-                        <TableCell className="font-medium">{config.name}</TableCell>
-                        <TableCell>{config.config.url}</TableCell>
+                      <TableRow key={config.id} className="text-xs">
+                        <TableCell className="font-medium text-xs">{config.name}</TableCell>
+                        <TableCell className="text-xs">{config.config.url}</TableCell>
                         <TableCell>{getStatusBadge(config.status)}</TableCell>
-                        <TableCell>{config.lastUpdated}</TableCell>
+                        <TableCell className="text-xs">{config.lastUpdated}</TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => testConnection(config)}>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => testConnection(config)} className="h-6 w-6 p-0">
                               <TestTube className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0">
                               <Edit className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)}>
+                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)} className="h-6 w-6 p-0">
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>
@@ -478,98 +501,104 @@ export default function Configurations() {
           <TabsContent value="eks" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <img src="https://res.cloudinary.com/hy4kyit2a/f_auto,fl_lossy,q_70/learn/modules/core-aws-services/explore-cloud-compute-with-aws/images/bfc2e1ee7013936df78568067c7ffeb6_30-e-1482-c-3561-4860-aaf-2-57-bee-7501266.png" alt="AWS EKS" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <img src="https://res.cloudinary.com/hy4kyit2a/f_auto,fl_lossy,q_70/learn/modules/core-aws-services/explore-cloud-compute-with-aws/images/bfc2e1ee7013936df78568067c7ffeb6_30-e-1482-c-3561-4860-aaf-2-57-bee-7501266.png" alt="AWS EKS" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
                   AWS EKS Configuration
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Configure AWS EKS cluster connections for Kubernetes log monitoring
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="eks-name">Configuration Name *</Label>
+                    <Label htmlFor="eks-name" className="text-xs">Configuration Name *</Label>
                     <Input
                       id="eks-name"
                       placeholder="e.g., Production EKS Cluster"
                       value={eksForm.name}
                       onChange={(e) => setEksForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="eks-cluster">Cluster Name *</Label>
+                    <Label htmlFor="eks-cluster" className="text-xs">Cluster Name *</Label>
                     <Input
                       id="eks-cluster"
                       placeholder="my-cluster"
                       value={eksForm.clusterName}
                       onChange={(e) => setEksForm(prev => ({ ...prev, clusterName: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="eks-region">AWS Region *</Label>
-                    <Select onValueChange={(value) => setEksForm(prev => ({ ...prev, region: value }))}>
-                      <SelectTrigger>
+                    <Label htmlFor="eks-region" className="text-xs">AWS Region *</Label>
+                    <Select onValueChange={(value) => setEksForm(prev => ({ ...prev, region: value }))} defaultValue={eksForm.region}>
+                      <SelectTrigger className="text-xs h-9">
                         <SelectValue placeholder="Select region" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="us-east-1">us-east-1</SelectItem>
-                        <SelectItem value="us-west-2">us-west-2</SelectItem>
-                        <SelectItem value="eu-west-1">eu-west-1</SelectItem>
-                        <SelectItem value="ap-southeast-1">ap-southeast-1</SelectItem>
+                        <SelectItem value="us-east-1" className="text-xs">us-east-1</SelectItem>
+                        <SelectItem value="us-west-2" className="text-xs">us-west-2</SelectItem>
+                        <SelectItem value="eu-west-1" className="text-xs">eu-west-1</SelectItem>
+                        <SelectItem value="ap-southeast-1" className="text-xs">ap-southeast-1</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="eks-namespace">Namespace</Label>
+                    <Label htmlFor="eks-namespace" className="text-xs">Namespace</Label>
                     <Input
                       id="eks-namespace"
                       placeholder="default"
                       value={eksForm.namespace}
                       onChange={(e) => setEksForm(prev => ({ ...prev, namespace: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="eks-access-key">Access Key ID *</Label>
+                    <Label htmlFor="eks-access-key" className="text-xs">Access Key ID *</Label>
                     <Input
                       id="eks-access-key"
                       placeholder="AKIA..."
                       value={eksForm.accessKeyId}
                       onChange={(e) => setEksForm(prev => ({ ...prev, accessKeyId: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="eks-secret-key">Secret Access Key *</Label>
+                    <Label htmlFor="eks-secret-key" className="text-xs">Secret Access Key *</Label>
                     <Input
                       id="eks-secret-key"
                       type="password"
                       placeholder="••••••••"
                       value={eksForm.secretAccessKey}
                       onChange={(e) => setEksForm(prev => ({ ...prev, secretAccessKey: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="eks-kubeconfig">Kubeconfig File</Label>
+                  <Label htmlFor="eks-kubeconfig" className="text-xs">Kubeconfig File</Label>
                   <Textarea
                     id="eks-kubeconfig"
                     placeholder="Paste kubeconfig content or upload file..."
-                    rows={6}
+                    rows={4}
                     value={eksForm.kubeconfig}
                     onChange={(e) => setEksForm(prev => ({ ...prev, kubeconfig: e.target.value }))}
+                    className="text-xs"
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => saveConfiguration('eks')}>
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={() => saveConfiguration('eks')} className="text-xs h-8 px-3 py-1.5">
+                    <Save className="w-3 h-3 mr-2" />
                     Save Configuration
                   </Button>
-                  <Button variant="outline">
-                    <TestTube className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <TestTube className="w-3 h-3 mr-2" />
                     Test Connection
                   </Button>
-                  <Button variant="outline">
-                    <Upload className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <Upload className="w-3 h-3 mr-2" />
                     Upload Kubeconfig
                   </Button>
                 </div>
@@ -579,37 +608,37 @@ export default function Configurations() {
             {/* EKS Configurations Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Saved EKS Configurations</CardTitle>
+                <CardTitle className="text-base font-medium">Saved EKS Configurations</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Cluster</TableHead>
-                      <TableHead>Region</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="text-xs">
+                      <TableHead className="text-xs font-medium">Name</TableHead>
+                      <TableHead className="text-xs font-medium">Cluster</TableHead>
+                      <TableHead className="text-xs font-medium">Region</TableHead>
+                      <TableHead className="text-xs font-medium">Status</TableHead>
+                      <TableHead className="text-xs font-medium">Last Updated</TableHead>
+                      <TableHead className="text-xs font-medium">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {getFilteredConfigurations('eks').map((config) => (
-                      <TableRow key={config.id}>
-                        <TableCell className="font-medium">{config.name}</TableCell>
-                        <TableCell>{config.config.clusterName}</TableCell>
-                        <TableCell>{config.config.region}</TableCell>
+                      <TableRow key={config.id} className="text-xs">
+                        <TableCell className="font-medium text-xs">{config.name}</TableCell>
+                        <TableCell className="text-xs">{config.config.clusterName}</TableCell>
+                        <TableCell className="text-xs">{config.config.region}</TableCell>
                         <TableCell>{getStatusBadge(config.status)}</TableCell>
-                        <TableCell>{config.lastUpdated}</TableCell>
+                        <TableCell className="text-xs">{config.lastUpdated}</TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => testConnection(config)}>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => testConnection(config)} className="h-6 w-6 p-0">
                               <TestTube className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0">
                               <Edit className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)}>
+                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)} className="h-6 w-6 p-0">
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>
@@ -626,88 +655,92 @@ export default function Configurations() {
           <TabsContent value="windows" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <img src="https://th.bing.com/th/id/R.b57d432bf7e29c5738e5fe80278f1258?rik=auCFqC7NXcnbww&riu=http%3a%2f%2fgetdrawings.com%2ffree-icon%2fmicrosoft-windows-icon-63.png&ehk=6%2faDRtRmsK%2fy3Z4gZN%2b5J%2bO%2bGv2Ax8h4kiK7q32D3mc%3d&risl=&pid=ImgRaw&r=0" alt="Windows" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <img src="https://th.bing.com/th/id/R.b57d432bf7e29c5738e5fe80278f1258?rik=auCFqC7NXcnbww&riu=http%3a%2f%2fgetdrawings.com%2ffree-icon%2fmicrosoft-windows-icon-63.png&ehk=6%2faDRtRmsK%2fy3Z4gZN%2b5J%2bO%2bGv2Ax8h4kiK7q32D3mc%3d&risl=&pid=ImgRaw&r=0" alt="Windows" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
                   Windows Configuration
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Configure Windows Event Log monitoring and PowerShell execution
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="win-name">Configuration Name *</Label>
+                    <Label htmlFor="win-name" className="text-xs">Configuration Name *</Label>
                     <Input
                       id="win-name"
                       placeholder="e.g., Windows Server 01"
                       value={windowsForm.name}
                       onChange={(e) => setWindowsForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="win-hostname">Hostname/IP *</Label>
+                    <Label htmlFor="win-hostname" className="text-xs">Hostname/IP *</Label>
                     <Input
                       id="win-hostname"
                       placeholder="localhost or 192.168.1.100"
                       value={windowsForm.hostname}
                       onChange={(e) => setWindowsForm(prev => ({ ...prev, hostname: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="win-username">Username *</Label>
+                    <Label htmlFor="win-username" className="text-xs">Username *</Label>
                     <Input
                       id="win-username"
                       placeholder="administrator"
                       value={windowsForm.username}
                       onChange={(e) => setWindowsForm(prev => ({ ...prev, username: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="win-password">Password *</Label>
+                    <Label htmlFor="win-password" className="text-xs">Password *</Label>
                     <Input
                       id="win-password"
                       type="password"
                       placeholder="••••••••"
                       value={windowsForm.password}
                       onChange={(e) => setWindowsForm(prev => ({ ...prev, password: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="win-event-log">Event Log Name</Label>
-                    <Select onValueChange={(value) => setWindowsForm(prev => ({ ...prev, eventLogName: value }))}>
-                      <SelectTrigger>
+                    <Label htmlFor="win-event-log" className="text-xs">Event Log Name</Label>
+                    <Select onValueChange={(value) => setWindowsForm(prev => ({ ...prev, eventLogName: value }))} defaultValue={windowsForm.eventLogName}>
+                      <SelectTrigger className="text-xs h-9">
                         <SelectValue placeholder="System" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="System">System</SelectItem>
-                        <SelectItem value="Application">Application</SelectItem>
-                        <SelectItem value="Security">Security</SelectItem>
-                        <SelectItem value="Setup">Setup</SelectItem>
+                        <SelectItem value="System" className="text-xs">System</SelectItem>
+                        <SelectItem value="Application" className="text-xs">Application</SelectItem>
+                        <SelectItem value="Security" className="text-xs">Security</SelectItem>
+                        <SelectItem value="Setup" className="text-xs">Setup</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="win-exec-policy">PowerShell Execution Policy</Label>
-                    <Select onValueChange={(value) => setWindowsForm(prev => ({ ...prev, executionPolicy: value }))}>
-                      <SelectTrigger>
+                    <Label htmlFor="win-exec-policy" className="text-xs">PowerShell Execution Policy</Label>
+                    <Select onValueChange={(value) => setWindowsForm(prev => ({ ...prev, executionPolicy: value }))} defaultValue={windowsForm.executionPolicy}>
+                      <SelectTrigger className="text-xs h-9">
                         <SelectValue placeholder="RemoteSigned" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Restricted">Restricted</SelectItem>
-                        <SelectItem value="RemoteSigned">RemoteSigned</SelectItem>
-                        <SelectItem value="Unrestricted">Unrestricted</SelectItem>
+                        <SelectItem value="Restricted" className="text-xs">Restricted</SelectItem>
+                        <SelectItem value="RemoteSigned" className="text-xs">RemoteSigned</SelectItem>
+                        <SelectItem value="Unrestricted" className="text-xs">Unrestricted</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => saveConfiguration('windows')}>
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={() => saveConfiguration('windows')} className="text-xs h-8 px-3 py-1.5">
+                    <Save className="w-3 h-3 mr-2" />
                     Save Configuration
                   </Button>
-                  <Button variant="outline">
-                    <TestTube className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <TestTube className="w-3 h-3 mr-2" />
                     Test Connection
                   </Button>
                 </div>
@@ -717,37 +750,37 @@ export default function Configurations() {
             {/* Windows Configurations Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Saved Windows Configurations</CardTitle>
+                <CardTitle className="text-base font-medium">Saved Windows Configurations</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Hostname</TableHead>
-                      <TableHead>Event Log</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="text-xs">
+                      <TableHead className="text-xs font-medium">Name</TableHead>
+                      <TableHead className="text-xs font-medium">Hostname</TableHead>
+                      <TableHead className="text-xs font-medium">Event Log</TableHead>
+                      <TableHead className="text-xs font-medium">Status</TableHead>
+                      <TableHead className="text-xs font-medium">Last Updated</TableHead>
+                      <TableHead className="text-xs font-medium">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {getFilteredConfigurations('windows').map((config) => (
-                      <TableRow key={config.id}>
-                        <TableCell className="font-medium">{config.name}</TableCell>
-                        <TableCell>{config.config.hostname}</TableCell>
-                        <TableCell>{config.config.eventLogName}</TableCell>
+                      <TableRow key={config.id} className="text-xs">
+                        <TableCell className="font-medium text-xs">{config.name}</TableCell>
+                        <TableCell className="text-xs">{config.config.hostname}</TableCell>
+                        <TableCell className="text-xs">{config.config.eventLogName}</TableCell>
                         <TableCell>{getStatusBadge(config.status)}</TableCell>
-                        <TableCell>{config.lastUpdated}</TableCell>
+                        <TableCell className="text-xs">{config.lastUpdated}</TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => testConnection(config)}>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => testConnection(config)} className="h-6 w-6 p-0">
                               <TestTube className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0">
                               <Edit className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)}>
+                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)} className="h-6 w-6 p-0">
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>
@@ -760,103 +793,109 @@ export default function Configurations() {
             </Card>
           </TabsContent>
 
-          /* Linux Configuration */
+          {/* Linux Configuration */}
           <TabsContent value="linux" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <img src="https://cdn.iconscout.com/icon/free/png-256/linux-3521549-2944967.png" alt="Linux" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <img src="https://cdn.iconscout.com/icon/free/png-256/linux-3521549-2944967.png" alt="Linux" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
                   Linux Configuration
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Configure Linux system log monitoring via SSH and Syslog
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="linux-name">Configuration Name *</Label>
+                    <Label htmlFor="linux-name" className="text-xs">Configuration Name *</Label>
                     <Input
                       id="linux-name"
                       placeholder="e.g., Production Linux Server"
                       value={linuxForm.name}
                       onChange={(e) => setLinuxForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="linux-hostname">Hostname/IP *</Label>
+                    <Label htmlFor="linux-hostname" className="text-xs">Hostname/IP *</Label>
                     <Input
                       id="linux-hostname"
                       placeholder="server.example.com or 192.168.1.50"
                       value={linuxForm.hostname}
                       onChange={(e) => setLinuxForm(prev => ({ ...prev, hostname: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="linux-username">SSH Username *</Label>
+                    <Label htmlFor="linux-username" className="text-xs">SSH Username *</Label>
                     <Input
                       id="linux-username"
                       placeholder="ubuntu or root"
                       value={linuxForm.username}
                       onChange={(e) => setLinuxForm(prev => ({ ...prev, username: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="linux-password">SSH Password</Label>
+                    <Label htmlFor="linux-password" className="text-xs">SSH Password</Label>
                     <Input
                       id="linux-password"
                       type="password"
                       placeholder="••••••••"
                       value={linuxForm.password}
                       onChange={(e) => setLinuxForm(prev => ({ ...prev, password: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="linux-syslog">Syslog Path</Label>
+                    <Label htmlFor="linux-syslog" className="text-xs">Syslog Path</Label>
                     <Input
                       id="linux-syslog"
                       placeholder="/var/log/syslog"
                       value={linuxForm.syslogPath}
                       onChange={(e) => setLinuxForm(prev => ({ ...prev, syslogPath: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="linux-format">Log Format</Label>
-                    <Select onValueChange={(value) => setLinuxForm(prev => ({ ...prev, logFormat: value }))}>
-                      <SelectTrigger>
+                    <Label htmlFor="linux-format" className="text-xs">Log Format</Label>
+                    <Select onValueChange={(value) => setLinuxForm(prev => ({ ...prev, logFormat: value }))} defaultValue={linuxForm.logFormat}>
+                      <SelectTrigger className="text-xs h-9">
                         <SelectValue placeholder="Syslog" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Syslog">Syslog</SelectItem>
-                        <SelectItem value="JSON">JSON</SelectItem>
-                        <SelectItem value="Plain Text">Plain Text</SelectItem>
+                        <SelectItem value="Syslog" className="text-xs">Syslog</SelectItem>
+                        <SelectItem value="JSON" className="text-xs">JSON</SelectItem>
+                        <SelectItem value="Plain Text" className="text-xs">Plain Text</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="linux-key">SSH Private Key</Label>
+                  <Label htmlFor="linux-key" className="text-xs">SSH Private Key</Label>
                   <Textarea
                     id="linux-key"
                     placeholder="-----BEGIN PRIVATE KEY-----
 Paste your SSH private key here...
 -----END PRIVATE KEY-----"
-                    rows={6}
+                    rows={4}
                     value={linuxForm.keyFile}
                     onChange={(e) => setLinuxForm(prev => ({ ...prev, keyFile: e.target.value }))}
+                    className="text-xs"
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => saveConfiguration('linux')}>
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={() => saveConfiguration('linux')} className="text-xs h-8 px-3 py-1.5">
+                    <Save className="w-3 h-3 mr-2" />
                     Save Configuration
                   </Button>
-                  <Button variant="outline">
-                    <TestTube className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <TestTube className="w-3 h-3 mr-2" />
                     Test SSH Connection
                   </Button>
-                  <Button variant="outline">
-                    <Upload className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <Upload className="w-3 h-3 mr-2" />
                     Upload Key File
                   </Button>
                 </div>
@@ -866,186 +905,37 @@ Paste your SSH private key here...
             {/* Linux Configurations Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Saved Linux Configurations</CardTitle>
+                <CardTitle className="text-base font-medium">Saved Linux Configurations</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Hostname</TableHead>
-                      <TableHead>Syslog Path</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="text-xs">
+                      <TableHead className="text-xs font-medium">Name</TableHead>
+                      <TableHead className="text-xs font-medium">Hostname</TableHead>
+                      <TableHead className="text-xs font-medium">Syslog Path</TableHead>
+                      <TableHead className="text-xs font-medium">Status</TableHead>
+                      <TableHead className="text-xs font-medium">Last Updated</TableHead>
+                      <TableHead className="text-xs font-medium">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {getFilteredConfigurations('linux').map((config) => (
-                      <TableRow key={config.id}>
-                        <TableCell className="font-medium">{config.name}</TableCell>
-                        <TableCell>{config.config.hostname}</TableCell>
-                        <TableCell>{config.config.syslogPath}</TableCell>
+                      <TableRow key={config.id} className="text-xs">
+                        <TableCell className="font-medium text-xs">{config.name}</TableCell>
+                        <TableCell className="text-xs">{config.config.hostname}</TableCell>
+                        <TableCell className="text-xs">{config.config.syslogPath}</TableCell>
                         <TableCell>{getStatusBadge(config.status)}</TableCell>
-                        <TableCell>{config.lastUpdated}</TableCell>
+                        <TableCell className="text-xs">{config.lastUpdated}</TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => testConnection(config)}>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => testConnection(config)} className="h-6 w-6 p-0">
                               <TestTube className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0">
                               <Edit className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)}>
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* macOS Configuration */}
-          <TabsContent value="macos" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <img src="https://www.pinclipart.com/picdir/big/236-2364339_macos-icon-clipart.png" alt="macOS" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
-                  macOS Configuration
-                </CardTitle>
-                <CardDescription>
-                  Configure macOS system log monitoring via SSH and system logs
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="macos-name">Configuration Name *</Label>
-                    <Input
-                      id="macos-name"
-                      placeholder="e.g., MacBook Pro Development"
-                      value={macosForm.name}
-                      onChange={(e) => setMacosForm(prev => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="macos-hostname">Hostname/IP *</Label>
-                    <Input
-                      id="macos-hostname"
-                      placeholder="macbook.local or 192.168.1.200"
-                      value={macosForm.hostname}
-                      onChange={(e) => setMacosForm(prev => ({ ...prev, hostname: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="macos-username">SSH Username *</Label>
-                    <Input
-                      id="macos-username"
-                      placeholder="admin or username"
-                      value={macosForm.username}
-                      onChange={(e) => setMacosForm(prev => ({ ...prev, username: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="macos-password">SSH Password</Label>
-                    <Input
-                      id="macos-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={macosForm.password}
-                      onChange={(e) => setMacosForm(prev => ({ ...prev, password: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="macos-log-path">System Log Path</Label>
-                    <Input
-                      id="macos-log-path"
-                      placeholder="/var/log/system.log"
-                      value={macosForm.systemLogPath}
-                      onChange={(e) => setMacosForm(prev => ({ ...prev, systemLogPath: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="macos-format">Log Format</Label>
-                    <Select onValueChange={(value) => setMacosForm(prev => ({ ...prev, logFormat: value }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Syslog" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Syslog">Syslog</SelectItem>
-                        <SelectItem value="JSON">JSON</SelectItem>
-                        <SelectItem value="Plain Text">Plain Text</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="macos-key">SSH Private Key</Label>
-                  <Textarea
-                    id="macos-key"
-                    placeholder="-----BEGIN PRIVATE KEY-----
-Paste your SSH private key here...
------END PRIVATE KEY-----"
-                    rows={6}
-                    value={macosForm.keyFile}
-                    onChange={(e) => setMacosForm(prev => ({ ...prev, keyFile: e.target.value }))}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => saveConfiguration('macos')}>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Configuration
-                  </Button>
-                  <Button variant="outline">
-                    <TestTube className="w-4 h-4 mr-2" />
-                    Test SSH Connection
-                  </Button>
-                  <Button variant="outline">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload Key File
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* macOS Configurations Table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Saved macOS Configurations</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Hostname</TableHead>
-                      <TableHead>Log Path</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {getFilteredConfigurations('macos').map((config) => (
-                      <TableRow key={config.id}>
-                        <TableCell className="font-medium">{config.name}</TableCell>
-                        <TableCell>{config.config.hostname}</TableCell>
-                        <TableCell>{config.config.systemLogPath}</TableCell>
-                        <TableCell>{getStatusBadge(config.status)}</TableCell>
-                        <TableCell>{config.lastUpdated}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => testConnection(config)}>
-                              <TestTube className="w-3 h-3" />
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <Edit className="w-3 h-3" />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)}>
+                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)} className="h-6 w-6 p-0">
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>
@@ -1062,72 +952,76 @@ Paste your SSH private key here...
           <TabsContent value="datadog" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <img src="https://www.datadoghq.com/favicon.ico" alt="DataDog" className="w-8 h-8 rounded-md border border-gray-200 p-1 bg-white shadow-sm" />
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <img src="https://www.datadoghq.com/favicon.ico" alt="DataDog" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
                   DataDog Configuration
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Configure DataDog integration for frontend and backend monitoring
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="dd-name">Configuration Name *</Label>
+                    <Label htmlFor="dd-name" className="text-xs">Configuration Name *</Label>
                     <Input
                       id="dd-name"
                       placeholder="e.g., Production DataDog"
                       value={datadogForm.name}
                       onChange={(e) => setDatadogForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dd-api-key">API Key *</Label>
+                    <Label htmlFor="dd-api-key" className="text-xs">API Key *</Label>
                     <Input
                       id="dd-api-key"
                       placeholder="Enter DataDog API Key"
                       value={datadogForm.apiKey}
                       onChange={(e) => setDatadogForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dd-app-key">Application Key *</Label>
+                    <Label htmlFor="dd-app-key" className="text-xs">Application Key *</Label>
                     <Input
                       id="dd-app-key"
                       placeholder="Enter DataDog Application Key"
                       value={datadogForm.appKey}
                       onChange={(e) => setDatadogForm(prev => ({ ...prev, appKey: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dd-client-token">Client Token (RUM)</Label>
+                    <Label htmlFor="dd-client-token" className="text-xs">Client Token (RUM)</Label>
                     <Input
                       id="dd-client-token"
                       placeholder="Enter DataDog Client Token"
                       value={datadogForm.clientToken}
                       onChange={(e) => setDatadogForm(prev => ({ ...prev, clientToken: e.target.value }))}
+                      className="text-xs h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dd-site">DataDog Site</Label>
+                    <Label htmlFor="dd-site" className="text-xs">DataDog Site</Label>
                     <Select
                       value={datadogForm.site}
                       onValueChange={(value) => setDatadogForm(prev => ({ ...prev, site: value }))}
                     >
-                      <SelectTrigger id="dd-site">
+                      <SelectTrigger id="dd-site" className="text-xs h-9">
                         <SelectValue placeholder="Select DataDog site" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="us1.datadoghq.com">US1</SelectItem>
-                        <SelectItem value="us3.datadoghq.com">US3</SelectItem>
-                        <SelectItem value="us5.datadoghq.com">US5</SelectItem>
-                        <SelectItem value="eu1.datadoghq.com">EU1</SelectItem>
-                        <SelectItem value="ap1.datadoghq.com">AP1</SelectItem>
+                        <SelectItem value="us1.datadoghq.com" className="text-xs">US1</SelectItem>
+                        <SelectItem value="us3.datadoghq.com" className="text-xs">US3</SelectItem>
+                        <SelectItem value="us5.datadoghq.com" className="text-xs">US5</SelectItem>
+                        <SelectItem value="eu1.datadoghq.com" className="text-xs">EU1</SelectItem>
+                        <SelectItem value="ap1.datadoghq.com" className="text-xs">AP1</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Monitoring Options</Label>
+                    <Label className="text-xs">Monitoring Options</Label>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
                         <Switch
@@ -1135,7 +1029,7 @@ Paste your SSH private key here...
                           checked={datadogForm.rumEnabled}
                           onCheckedChange={(checked) => setDatadogForm(prev => ({ ...prev, rumEnabled: checked }))}
                         />
-                        <Label htmlFor="dd-rum-enabled">Enable RUM</Label>
+                        <Label htmlFor="dd-rum-enabled" className="text-xs">Enable RUM</Label>
                       </div>
                       <div className="flex items-center gap-2">
                         <Switch
@@ -1143,18 +1037,18 @@ Paste your SSH private key here...
                           checked={datadogForm.apmEnabled}
                           onCheckedChange={(checked) => setDatadogForm(prev => ({ ...prev, apmEnabled: checked }))}
                         />
-                        <Label htmlFor="dd-apm-enabled">Enable APM</Label>
+                        <Label htmlFor="dd-apm-enabled" className="text-xs">Enable APM</Label>
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => saveConfiguration('datadog')}>
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={() => saveConfiguration('datadog')} className="text-xs h-8 px-3 py-1.5">
+                    <Save className="w-3 h-3 mr-2" />
                     Save Configuration
                   </Button>
-                  <Button variant="outline">
-                    <TestTube className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <TestTube className="w-3 h-3 mr-2" />
                     Test Connection
                   </Button>
                 </div>
@@ -1164,41 +1058,190 @@ Paste your SSH private key here...
             {/* DataDog Configurations Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Saved DataDog Configurations</CardTitle>
+                <CardTitle className="text-base font-medium">Saved DataDog Configurations</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>API Key</TableHead>
-                      <TableHead>Site</TableHead>
-                      <TableHead>RUM</TableHead>
-                      <TableHead>APM</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="text-xs">
+                      <TableHead className="text-xs font-medium">Name</TableHead>
+                      <TableHead className="text-xs font-medium">API Key</TableHead>
+                      <TableHead className="text-xs font-medium">Site</TableHead>
+                      <TableHead className="text-xs font-medium">RUM</TableHead>
+                      <TableHead className="text-xs font-medium">APM</TableHead>
+                      <TableHead className="text-xs font-medium">Status</TableHead>
+                      <TableHead className="text-xs font-medium">Last Updated</TableHead>
+                      <TableHead className="text-xs font-medium">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {getFilteredConfigurations('datadog').map((config) => (
-                      <TableRow key={config.id}>
-                        <TableCell className="font-medium">{config.name}</TableCell>
-                        <TableCell>{config.config.apiKey.slice(0, 8)}...</TableCell>
-                        <TableCell>{config.config.site}</TableCell>
-                        <TableCell>{config.config.rumEnabled ? 'Enabled' : 'Disabled'}</TableCell>
-                        <TableCell>{config.config.apmEnabled ? 'Enabled' : 'Disabled'}</TableCell>
+                      <TableRow key={config.id} className="text-xs">
+                        <TableCell className="font-medium text-xs">{config.name}</TableCell>
+                        <TableCell className="text-xs">{config.config.apiKey.slice(0, 8)}...</TableCell>
+                        <TableCell className="text-xs">{config.config.site}</TableCell>
+                        <TableCell className="text-xs">{config.config.rumEnabled ? 'Enabled' : 'Disabled'}</TableCell>
+                        <TableCell className="text-xs">{config.config.apmEnabled ? 'Enabled' : 'Disabled'}</TableCell>
                         <TableCell>{getStatusBadge(config.status)}</TableCell>
-                        <TableCell>{config.lastUpdated}</TableCell>
+                        <TableCell className="text-xs">{config.lastUpdated}</TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => testConnection(config)}>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => testConnection(config)} className="h-6 w-6 p-0">
                               <TestTube className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0">
                               <Edit className="w-3 h-3" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)}>
+                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)} className="h-6 w-6 p-0">
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Databricks Configuration */}
+          <TabsContent value="databricks" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <img src="https://i.pinimg.com/736x/65/1d/d6/651dd6bdd503bd0aaba588b9e6439459.jpg" alt="Databricks" className="w-4 h-4 rounded border border-gray-200 p-0.5 bg-white shadow-sm" />
+                  Databricks Configuration
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  Configure Databricks workspace for log and cluster monitoring
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="db-name" className="text-xs">Configuration Name *</Label>
+                    <Input
+                      id="db-name"
+                      placeholder="e.g., Databricks Workspace"
+                      value={databricksForm.name}
+                      onChange={(e) => setDatabricksForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-workspace-url" className="text-xs">Workspace URL *</Label>
+                    <Input
+                      id="db-workspace-url"
+                      placeholder="https://adb-1234567890.azuredatabricks.net"
+                      value={databricksForm.workspaceUrl}
+                      onChange={(e) => setDatabricksForm(prev => ({ ...prev, workspaceUrl: e.target.value }))}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-token" className="text-xs">Personal Access Token *</Label>
+                    <Input
+                      id="db-token"
+                      type="password"
+                      placeholder="dapi_abcdef1234567890"
+                      value={databricksForm.token}
+                      onChange={(e) => setDatabricksForm(prev => ({ ...prev, token: e.target.value }))}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-cluster-id" className="text-xs">Cluster ID *</Label>
+                    <Input
+                      id="db-cluster-id"
+                      placeholder="0923-164500-xyz123"
+                      value={databricksForm.clusterId}
+                      onChange={(e) => setDatabricksForm(prev => ({ ...prev, clusterId: e.target.value }))}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-workspace-id" className="text-xs">Workspace ID</Label>
+                    <Input
+                      id="db-workspace-id"
+                      placeholder="1234567890"
+                      value={databricksForm.workspaceId}
+                      onChange={(e) => setDatabricksForm(prev => ({ ...prev, workspaceId: e.target.value }))}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-log-path" className="text-xs">Log Path</Label>
+                    <Input
+                      id="db-log-path"
+                      placeholder="dbfs:/databricks/logs"
+                      value={databricksForm.logPath}
+                      onChange={(e) => setDatabricksForm(prev => ({ ...prev, logPath: e.target.value }))}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-log-format" className="text-xs">Log Format</Label>
+                    <Select onValueChange={(value) => setDatabricksForm(prev => ({ ...prev, logFormat: value }))} defaultValue={databricksForm.logFormat}>
+                      <SelectTrigger className="text-xs h-9">
+                        <SelectValue placeholder="JSON" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="JSON" className="text-xs">JSON</SelectItem>
+                        <SelectItem value="Plain Text" className="text-xs">Plain Text</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => saveConfiguration('databricks')} className="text-xs h-8 px-3 py-1.5">
+                    <Save className="w-3 h-3 mr-2" />
+                    Save Configuration
+                  </Button>
+                  <Button variant="outline" className="text-xs h-8 px-3 py-1.5">
+                    <TestTube className="w-3 h-3 mr-2" />
+                    Test Connection
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Databricks Configurations Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-medium">Saved Databricks Configurations</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="text-xs">
+                      <TableHead className="text-xs font-medium">Name</TableHead>
+                      <TableHead className="text-xs font-medium">Workspace URL</TableHead>
+                      <TableHead className="text-xs font-medium">Cluster ID</TableHead>
+                      <TableHead className="text-xs font-medium">Log Path</TableHead>
+                      <TableHead className="text-xs font-medium">Status</TableHead>
+                      <TableHead className="text-xs font-medium">Last Updated</TableHead>
+                      <TableHead className="text-xs font-medium">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {getFilteredConfigurations('databricks').map((config) => (
+                      <TableRow key={config.id} className="text-xs">
+                        <TableCell className="font-medium text-xs">{config.name}</TableCell>
+                        <TableCell className="text-xs">{config.config.workspaceUrl}</TableCell>
+                        <TableCell className="text-xs">{config.config.clusterId}</TableCell>
+                        <TableCell className="text-xs">{config.config.logPath}</TableCell>
+                        <TableCell>{getStatusBadge(config.status)}</TableCell>
+                        <TableCell className="text-xs">{config.lastUpdated}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => testConnection(config)} className="h-6 w-6 p-0">
+                              <TestTube className="w-3 h-3" />
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0">
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => deleteConfiguration(config.id)} className="h-6 w-6 p-0">
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>

@@ -1,4 +1,3 @@
-
 // LiveConsole.tsx
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,10 +19,11 @@ import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { connectWebSocket } from "@/api";
 
+// Interface for LogEntry
 interface LogEntry {
   id: string;
   timestamp: string;
-  level: "INFO" | "ERROR" | "WARNING" | "DEBUG";
+  level: string;
   agent: string;
   message: string;
   source?: string;
@@ -51,20 +51,17 @@ export default function LiveConsole() {
     const ws = connectWebSocket(
       (message) => {
         if (!isRunning) return;
-        if (message.agent !== "LogForwarder") return; // Only process LogForwarder logs for now
-
         const logEntry: LogEntry = {
-          id: message.id,
+          id: message.id || `id-${Date.now()}-${Math.random()}`, // Fallback ID
           timestamp: message.timestamp,
-          level: message.level as LogEntry["level"],
+          level: message.level,
           agent: message.agent,
           message: message.message,
           source: message.source
         };
-
         setLogs(prev => {
           const updated = [...prev, logEntry];
-          return updated.slice(-1000); // Keep only last 1000 logs
+          return updated.slice(-1000); // Keep last 1000 logs
         });
       },
       (error) => {
@@ -117,6 +114,9 @@ export default function LiveConsole() {
     ).join('\n');
     navigator.clipboard.writeText(logText);
   };
+
+  // Get unique agents for filter
+  const uniqueAgents = Array.from(new Set(logs.map(log => log.agent)));
 
   return (
     <AppLayout title="Live Console" breadcrumbs={["Monitoring"]}>
@@ -188,7 +188,7 @@ export default function LiveConsole() {
                 {/* Agent Filter */}
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Agent:</span>
-                  {["all", "LogForwarder"].map((agent) => (
+                  {["all", ...uniqueAgents].map((agent) => (
                     <Button
                       key={agent}
                       variant={selectedAgent === agent ? "default" : "outline"}
@@ -248,8 +248,8 @@ export default function LiveConsole() {
                       variant="outline" 
                       className={cn(
                         "text-xs min-w-[70px] justify-center",
-                        levelConfig[log.level].bg,
-                        levelConfig[log.level].color
+                        levelConfig[log.level]?.bg || "bg-muted/10",
+                        levelConfig[log.level]?.color || "text-muted-foreground"
                       )}
                     >
                       {log.level}

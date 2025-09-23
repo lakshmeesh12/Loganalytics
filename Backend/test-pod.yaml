@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-test
+  namespace: default
+spec:
+  containers:
+  - name: memory-hog
+    image: busybox
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do dd if=/dev/zero of=/dev/null bs=1M; done"]
+    resources:
+      limits:
+        memory: "64Mi"  # Tight limit to trigger OOM
+      requests:
+        memory: "32Mi"
