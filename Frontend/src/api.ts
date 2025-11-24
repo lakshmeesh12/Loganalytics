@@ -3,8 +3,8 @@ import axios, { AxiosResponse } from 'axios';
 // Base URL for the API
 const API_BASE_URL = 'http://localhost:8000';
 
-// Interface for the response from the /start-agents endpoint
-interface StartAgentsResponse {
+// Interface for the response from the /start-agents and /stop-agents endpoints
+interface AgentResponse {
   status: string;
 }
 
@@ -24,7 +24,7 @@ interface AgentActionMessage {
   reference: string;
   status: string;
   details?: string;
-  agent: 'ErrorAnalyzer' | 'FixerAgent' | 'WindowsMonitor' | 'SnowflakeMonitor' | 'KubernetesMonitor' | 'EmailAgent';
+  agent: 'ErrorAnalyzer' | 'FixerAgent' | 'WindowsMonitor' | 'SnowflakeMonitor' | 'KubernetesMonitor' | 'DatabricksMonitor' | 'EmailAgent';
   time?: string;
   timestamp?: string;
   [key: string]: any;
@@ -55,15 +55,26 @@ const isValidAgentActionMessage = (data: any): data is AgentActionMessage => {
 };
 
 // Function to call the /start-agents endpoint with mode parameter
-export async function startAgents(mode: 'semi-autonomous' | 'autonomous' = 'semi-autonomous'): Promise<StartAgentsResponse> {
+export async function startAgents(mode: 'semi-autonomous' | 'autonomous' = 'semi-autonomous'): Promise<AgentResponse> {
   try {
-    const response: AxiosResponse<StartAgentsResponse> = await axios.get(`${API_BASE_URL}/start-agents`, {
+    const response: AxiosResponse<AgentResponse> = await axios.get(`${API_BASE_URL}/start-agents`, {
       params: { mode }
     });
     return response.data;
   } catch (error) {
     console.error('Error starting agents:', error);
     throw new Error(`Failed to start agents in ${mode} mode`);
+  }
+}
+
+// Function to call the /stop-agents endpoint
+export async function stopAgents(): Promise<AgentResponse> {
+  try {
+    const response: AxiosResponse<AgentResponse> = await axios.get(`${API_BASE_URL}/stop-agents`);
+    return response.data;
+  } catch (error) {
+    console.error('Error stopping agents:', error);
+    throw new Error('Failed to stop agents');
   }
 }
 

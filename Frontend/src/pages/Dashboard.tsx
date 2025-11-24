@@ -9,7 +9,6 @@ import {
   Wrench, 
   Eye, 
   Database, 
-  Play, 
   RefreshCw,
   Server,
   Zap
@@ -82,10 +81,6 @@ export default function Dashboard() {
             <Button variant="outline" size="sm" className="text-xs">
               <RefreshCw className="h-3 w-3 mr-1" />
               Refresh
-            </Button>
-            <Button size="sm" className="text-xs">
-              <Play className="h-3 w-3 mr-1" />
-              Start All Agents
             </Button>
           </div>
         </div>

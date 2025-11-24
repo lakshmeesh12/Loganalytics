@@ -1,13 +1,19 @@
 import {
   Bell,
   Settings,
-  User,      // <-- User icon is already here, no need for Hand
+  User,
   Moon,
   Sun,
   Menu,
   Play,
   Loader2,
   Sparkles,
+  StopCircle,
+  Shield,
+  Wrench,
+  Eye,
+  Activity,
+  ChevronDown,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -15,13 +21,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { startAgents } from "@/api";
+import { startAgents, stopAgents } from "@/api";
+import { cn } from "@/lib/utils"; // Added for className utility
 
 interface AppHeaderProps {
   title?: string;
@@ -31,8 +39,15 @@ interface AppHeaderProps {
 export function AppHeader({ title = "Dashboard", breadcrumbs = [] }: AppHeaderProps) {
   const [isDark, setIsDark] = useState(true);
   const [isStartingAgents, setIsStartingAgents] = useState(false);
+  const [isStoppingAgents, setIsStoppingAgents] = useState(false);
   const [agentsRunning, setAgentsRunning] = useState(false);
   const [mode, setMode] = useState<'semi-autonomous' | 'autonomous'>('semi-autonomous');
+  const [selectedAgents, setSelectedAgents] = useState({
+    LogForwarder: true,
+    Monitor: true,
+    ErrorAnalyzer: true,
+    Fixer: true,
+  });
   const { toggleSidebar } = useSidebar();
 
   const toggleTheme = () => {
@@ -51,6 +66,33 @@ export function AppHeader({ title = "Dashboard", breadcrumbs = [] }: AppHeaderPr
     } finally {
       setIsStartingAgents(false);
     }
+  };
+
+  const handleStopAgents = async () => {
+    try {
+      setIsStoppingAgents(true);
+      const response = await stopAgents();
+      console.log("Agents stopped successfully:", response);
+      setAgentsRunning(false);
+    } catch (error) {
+      console.error("Failed to stop agents:", error);
+    } finally {
+      setIsStoppingAgents(false);
+    }
+  };
+
+  const handleAgentToggle = (agent: keyof typeof selectedAgents) => {
+    setSelectedAgents((prev) => ({
+      ...prev,
+      [agent]: !prev[agent],
+    }));
+  };
+
+  const agentIcons = {
+    LogForwarder: Activity,
+    Monitor: Eye,
+    ErrorAnalyzer: Shield,
+    Fixer: Wrench,
   };
 
   return (
@@ -83,33 +125,33 @@ export function AppHeader({ title = "Dashboard", breadcrumbs = [] }: AppHeaderPr
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-4">
-          {/* ✨ UPDATED: Mode Selector with higher contrast and new icon ✨ */}
-          <div className="relative flex w-[160px] items-center rounded-full bg-muted p-1">
+        <div className="flex items-center gap-3">
+          {/* Mode Selector */}
+          <div className="relative flex w-[140px] h-8 items-center rounded-full bg-muted p-1">
             <motion.div
-              className="absolute z-0 h-7 w-[75px] rounded-full bg-primary" // <-- UPDATED: High-contrast background
+              className="absolute z-0 h-6 w-[66px] rounded-full bg-primary"
               layout
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              animate={{ x: mode === 'semi-autonomous' ? 2 : 81 }}
+              animate={{ x: mode === 'semi-autonomous' ? 2 : 71 }}
             />
-            {/* Manual Button */}
+            {/* Human Button */}
             <button
               onClick={() => setMode('semi-autonomous')}
-              className={`relative z-10 flex w-1/2 items-center justify-center gap-1.5 rounded-full p-1.5 text-xs font-semibold transition-colors ${
+              className={`relative z-10 flex w-1/2 h-6 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors ${
                 mode === 'semi-autonomous'
-                  ? 'text-primary-foreground' // <-- UPDATED: Text color for selected state
+                  ? 'text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground/80'
               }`}
             >
-              <User className="h-3.5 w-3.5" /> {/* <-- UPDATED: Icon changed to User */}
+              <User className="h-3 w-3" />
               Manual
             </button>
-            {/* Auto Button */}
+            {/* Agent Button */}
             <button
               onClick={() => setMode('autonomous')}
-              className={`relative z-10 flex w-1/2 items-center justify-center gap-1.5 rounded-full p-1.5 text-xs font-semibold transition-colors ${
+              className={`relative z-10 flex w-1/2 h-6 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors ${
                 mode === 'autonomous'
-                  ? 'text-primary-foreground' // <-- UPDATED: Text color for selected state
+                  ? 'text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground/80'
               }`}
             >
@@ -118,32 +160,85 @@ export function AppHeader({ title = "Dashboard", breadcrumbs = [] }: AppHeaderPr
             </button>
           </div>
 
-          {/* ✨ UPDATED: Start Agents Button with dynamic text ✨ */}
+          {/* Start Agents Button with Dropdown */}
+          <div className="relative flex items-center">
+            <Button
+              onClick={handleStartAgents}
+              disabled={isStartingAgents || agentsRunning}
+              size="sm"
+              className={`w-[120px] h-8 text-xs font-medium transition-all duration-200 ${
+                agentsRunning
+                  ? "bg-green-600 hover:bg-green-700 text-white rounded-full"
+                  : "bg-primary hover:bg-primary/90 text-primary-foreground rounded-r-none"
+              } disabled:opacity-50`}
+            >
+              {isStartingAgents ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Starting...
+                </>
+              ) : agentsRunning ? (
+                <>
+                  <div className="w-1.5 h-1.5 bg-green-300 rounded-full mr-1 animate-pulse" />
+                  Agents Running
+                </>
+              ) : (
+                <>
+                  <Play className="h-3 w-3 mr-1" />
+                  Start Agents
+                </>
+              )}
+            </Button>
+            {!agentsRunning && !isStartingAgents && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-6 h-8 rounded-l-none border-l-0 bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[150px] p-1">
+                  {Object.entries(selectedAgents).map(([agent, isSelected]) => {
+                    const AgentIcon = agentIcons[agent as keyof typeof agentIcons];
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={agent}
+                        checked={isSelected}
+                        onCheckedChange={() => handleAgentToggle(agent as keyof typeof selectedAgents)}
+                        className={cn(
+                          "text-xs flex items-center gap-2 p-1.5 rounded-sm",
+                          isSelected ? "bg-primary/10 text-primary font-semibold" : "text-muted-foreground"
+                        )}
+                      >
+                        <AgentIcon className="h-3 w-3" />
+                        {agent}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+
+          {/* Stop Agents Button */}
           <Button
-            onClick={handleStartAgents}
-            disabled={isStartingAgents || agentsRunning}
+            onClick={handleStopAgents}
+            disabled={!agentsRunning || isStoppingAgents}
             size="sm"
-            className={`w-[155px] transition-all duration-200 ${ // Increased width to fit longer text
-              agentsRunning
-                ? "bg-green-600 hover:bg-green-700 text-white"
-                : "bg-primary hover:bg-primary/90 text-primary-foreground"
-            } disabled:opacity-50`}
+            className="w-[120px] h-8 text-xs font-medium transition-all duration-200 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 rounded-full"
           >
-            {isStartingAgents ? (
+            {isStoppingAgents ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Starting...
-              </>
-            ) : agentsRunning ? (
-              <>
-                <div className="w-2 h-2 bg-green-300 rounded-full mr-2 animate-pulse" />
-                Agents Running
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Stopping...
               </>
             ) : (
               <>
-                <Play className="h-4 w-4 mr-2" />
-                {/* <-- UPDATED: Text syncs with selected mode --> */}
-                {mode === 'semi-autonomous' ? 'Start Manually' : 'Start Automatically'}
+                <StopCircle className="h-3 w-3 mr-1" />
+                Stop Agents
               </>
             )}
           </Button>

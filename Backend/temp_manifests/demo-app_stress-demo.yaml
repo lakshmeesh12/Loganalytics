@@ -31,11 +31,11 @@ spec:
     terminationMessagePolicy: File
     volumeMounts:
     - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-      name: kube-api-access-4xw8v
+      name: kube-api-access-cm979
       readOnly: true
   dnsPolicy: ClusterFirst
   enableServiceLinks: true
-  nodeName: ip-10-0-76-252.ap-south-1.compute.internal
+  nodeName: ip-10-0-82-113.ap-south-1.compute.internal
   preemptionPolicy: PreemptLowerPriority
   priority: 0
   restartPolicy: Always
@@ -54,7 +54,7 @@ spec:
     operator: Exists
     tolerationSeconds: 300
   volumes:
-  - name: kube-api-access-4xw8v
+  - name: kube-api-access-cm979
     projected:
       defaultMode: 420
       sources:

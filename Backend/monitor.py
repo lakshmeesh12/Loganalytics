@@ -463,6 +463,7 @@ class MonitorAgent(AssistantAgent):
         self.rules_db = self.mongo_client["rules_engine"]
         self.rules_collection = self.rules_db["rules"]
         self.service_monitors = self._initialize_monitors()
+        self._running = True 
 
     def _initialize_monitors(self):
         """Initialize service-specific monitors."""
@@ -482,7 +483,7 @@ class MonitorAgent(AssistantAgent):
             },
             "eks": {
                 "region": "ap-south-1",
-                "log_group": "/aws/eks/crash-fix-cluster-2/cluster",
+                "log_group": "/aws/eks/crash-fix-cluster-3/cluster",
                 "error_log_file": f"{config_base_path}/kubernetes_errors.log",
                 "fix_queue_file": f"{config_base_path}/fix_queue.json"
             },
@@ -514,7 +515,7 @@ class MonitorAgent(AssistantAgent):
     async def run_async(self):
         self.logger.info(f"Starting CloudWatch logs monitoring for active rules in {self.mode} mode...")
         try:
-            while True:
+            while self._running:  # Check stop flag
                 active_data_sources = self.get_active_data_sources()
                 for source, monitor in self.service_monitors.items():
                     if source in active_data_sources:
@@ -538,4 +539,12 @@ class MonitorAgent(AssistantAgent):
         try:
             loop.run_until_complete(self.run_async())
         finally:
+            # Properly shut down the event loop
+            loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
+
+    def stop(self):
+        """Stop the monitoring loop and clean up resources."""
+        self._running = False  # Set stop flag
+        self.logger.info("Stopping MonitorAgent")
+        self.mongo_client.close()

@@ -48,6 +48,7 @@ class EmailAgent(AssistantAgent):
         self.ssl_context.verify_mode = ssl.CERT_REQUIRED
         self.ssl_context.load_default_certs()
         self.service = build('gmail', 'v1', credentials=self.credentials, discoveryServiceUrl=None, static_discovery=False)
+        self._running = True
 
     def load_credentials(self):
         """Load or generate Gmail API credentials."""
@@ -185,7 +186,7 @@ class EmailAgent(AssistantAgent):
         """Poll inbox for replies every 5 seconds with retry."""
         max_retries = 3
         retry_delay = 2
-        while True:
+        while self._running:  # Check stop flag
             try:
                 self.logger.info("Polling Gmail inbox for new unread emails...")
                 result = self.service.users().messages().list(
@@ -379,11 +380,14 @@ class EmailAgent(AssistantAgent):
         """Run the email agent, monitoring inbox."""
         self.logger.info("Starting EmailAgent inbox monitoring...")
         try:
-            await self.check_inbox()
+            while self._running:  # Check stop flag
+                await self.check_inbox()
         except asyncio.CancelledError:
             self.logger.info("EmailAgent stopped by user")
-        except Exception as e:
-            self.logger.error(f"Error in EmailAgent loop: {e}")
+        finally:
+            self.logger.info("Cleaning up EmailAgent resources")
+            if self.service:
+                self.service.close()
 
     def run(self):
         """Synchronous wrapper for running the async email agent."""
@@ -392,7 +396,17 @@ class EmailAgent(AssistantAgent):
         try:
             loop.run_until_complete(self.run_async())
         finally:
+            # Properly shut down the event loop
+            loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
+
+    def stop(self):
+        """Stop the email agent and clean up resources."""
+        self._running = False  # Set stop flag
+        self.logger.info("Stopping EmailAgent")
+        if self.service:
+            self.service.close()
+            self.logger.info("Gmail service closed")
 
 if __name__ == "__main__":
     from agent import ErrorAnalyzerAgent

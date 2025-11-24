@@ -495,17 +495,28 @@ class KubernetesErrorAnalyzer(BaseErrorAnalyzer):
 
     def _modify_pod_manifest(self, pod_name: str, namespace: str, container_name: str) -> tuple:
         try:
+            import os
+            import subprocess
+            import yaml
+            import json
+            import re
+
+            # Ensure kubectl uses the correct kubeconfig
+            os.environ["KUBECONFIG"] = r"C:\Users\Quadrant\.kube\config"
+
             # Step 1: Fetch pod manifest
             cmd = f"kubectl get pod {pod_name} -n {namespace} -o yaml"
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
             if result.returncode != 0:
                 self.agent.logger.error(f"Failed to fetch pod manifest: {result.stderr}")
                 return None, []
+
             manifest = yaml.safe_load(result.stdout)
             containers = manifest.get('spec', {}).get('containers', [])
             if not containers:
                 self.agent.logger.error(f"No containers found in pod {pod_name}")
                 return None, []
+
             target_container = None
             current_resources = None
             for container in containers:
@@ -516,19 +527,22 @@ class KubernetesErrorAnalyzer(BaseErrorAnalyzer):
             else:
                 self.agent.logger.error(f"Container {container_name} not found in pod {pod_name}")
                 return None, []
+
             # Step 2: Fetch resource usage metrics
             metrics_cmd = f"kubectl top pod {pod_name} -n {namespace} --containers"
             metrics_result = subprocess.run(metrics_cmd, shell=True, capture_output=True, text=True)
             metrics_output = metrics_result.stdout if metrics_result.returncode == 0 else ""
             if not metrics_output:
                 self.agent.logger.warning(f"Failed to fetch metrics for pod {pod_name}: {metrics_result.stderr}")
+
             # Step 3: Fetch detailed pod description
             describe_cmd = f"kubectl describe pod {pod_name} -n {namespace}"
             describe_result = subprocess.run(describe_cmd, shell=True, capture_output=True, text=True)
             describe_output = describe_result.stdout if describe_result.returncode == 0 else ""
             if not describe_output:
                 self.agent.logger.warning(f"Failed to fetch pod description for {pod_name}: {describe_result.stderr}")
-            # Step 4: Prepare LLM prompt for resource analysis (generic, data-driven)
+
+            # Step 4: Prepare LLM prompt for resource analysis
             full_container_spec = json.dumps(target_container, indent=2)
             prompt = (
                 "You are a Kubernetes resource optimization expert. Analyze the full container spec, current resource usage metrics, "
@@ -557,6 +571,7 @@ class KubernetesErrorAnalyzer(BaseErrorAnalyzer):
                 "- 'memory_request': Recommended memory request (e.g., '102Mi')\n"
                 "Ensure values are consistent, conservative, and in valid Kubernetes format. Return valid JSON without any explanation."
             )
+
             # Step 5: Query LLM for resource recommendations
             try:
                 response = self.agent.client.chat.completions.create(
@@ -569,56 +584,42 @@ class KubernetesErrorAnalyzer(BaseErrorAnalyzer):
                 )
                 reply_content = response.choices[0].message.content.strip()
                 self.agent.logger.info(f"LLM reply for resource recommendations: {reply_content[:200]}...")
+
                 match = re.search(r"```json\s*(\{.*?\})\s*```", reply_content, re.DOTALL)
                 if match:
                     json_str = match.group(1)
                 else:
                     json_str = reply_content
+
                 resource_recommendations = json.loads(json_str)
-            except json.JSONDecodeError as json_err:
-                self.agent.logger.error(f"JSON parsing error in LLM response: {json_err}, Response: {reply_content[:200]}...")
-                # Fallback: Dynamic conservative increase based on current resources (generic for any pod)
+
+            except (json.JSONDecodeError, Exception) as e:
+                self.agent.logger.error(f"LLM response parse/error: {e}")
+                # Fallback: conservative increase
                 current_limits = current_resources.get('limits', {})
                 current_requests = current_resources.get('requests', {})
-                cpu_limit_val = self._parse_cpu(current_limits.get('cpu', '50m'))
-                new_cpu_limit_val = max(cpu_limit_val * 1.5, cpu_limit_val + 0.05)  # 50% increase or +50m min
-                new_cpu_limit = f"{int(new_cpu_limit_val * 1000)}m" if new_cpu_limit_val < 1 else f"{new_cpu_limit_val}"
-                new_cpu_request_val = max(self._parse_cpu(current_requests.get('cpu', new_cpu_limit[:-1] + 'm')) * 0.8, cpu_limit_val * 0.8)
-                new_cpu_request = f"{int(new_cpu_request_val * 1000)}m" if new_cpu_request_val < 1 else f"{new_cpu_request_val}"
-                mem_limit_val = self._parse_memory(current_limits.get('memory', '32Mi'))
-                new_mem_limit_val = max(mem_limit_val * 1.5, mem_limit_val + 64)  # 50% or +64Mi min
-                new_mem_limit = f"{int(new_mem_limit_val)}Mi"
-                new_mem_request_val = max(self._parse_memory(current_requests.get('memory', f"{int(mem_limit_val)}Mi")) * 0.8, mem_limit_val * 0.8)
-                new_mem_request = f"{int(new_mem_request_val)}Mi"
-                resource_recommendations = {
-                    "cpu_limit": new_cpu_limit,
-                    "cpu_request": new_cpu_request,
-                    "memory_limit": new_mem_limit,
-                    "memory_request": new_mem_request
-                }
-                self.agent.logger.info(f"Applied dynamic fallback recommendations: {resource_recommendations}")
-            except Exception as e:
-                self.agent.logger.error(f"OpenAI API error: {e}")
-                # Same fallback as above
-                current_limits = current_resources.get('limits', {})
-                current_requests = current_resources.get('requests', {})
+
                 cpu_limit_val = self._parse_cpu(current_limits.get('cpu', '50m'))
                 new_cpu_limit_val = max(cpu_limit_val * 1.5, cpu_limit_val + 0.05)
                 new_cpu_limit = f"{int(new_cpu_limit_val * 1000)}m" if new_cpu_limit_val < 1 else f"{new_cpu_limit_val}"
                 new_cpu_request_val = max(self._parse_cpu(current_requests.get('cpu', new_cpu_limit[:-1] + 'm')) * 0.8, cpu_limit_val * 0.8)
                 new_cpu_request = f"{int(new_cpu_request_val * 1000)}m" if new_cpu_request_val < 1 else f"{new_cpu_request_val}"
+
                 mem_limit_val = self._parse_memory(current_limits.get('memory', '32Mi'))
                 new_mem_limit_val = max(mem_limit_val * 1.5, mem_limit_val + 64)
                 new_mem_limit = f"{int(new_mem_limit_val)}Mi"
                 new_mem_request_val = max(self._parse_memory(current_requests.get('memory', f"{int(mem_limit_val)}Mi")) * 0.8, mem_limit_val * 0.8)
                 new_mem_request = f"{int(new_mem_request_val)}Mi"
+
                 resource_recommendations = {
                     "cpu_limit": new_cpu_limit,
                     "cpu_request": new_cpu_request,
                     "memory_limit": new_mem_limit,
                     "memory_request": new_mem_request
                 }
+
                 self.agent.logger.info(f"Applied dynamic fallback recommendations: {resource_recommendations}")
+
             # Step 6: Update container resources
             target_container['resources'] = {
                 'limits': {
@@ -630,6 +631,7 @@ class KubernetesErrorAnalyzer(BaseErrorAnalyzer):
                     'memory': resource_recommendations['memory_request']
                 }
             }
+
             # Step 7: Clean manifest
             manifest.pop('status', None)
             metadata = manifest.get('metadata', {})
@@ -637,17 +639,22 @@ class KubernetesErrorAnalyzer(BaseErrorAnalyzer):
             metadata.pop('resourceVersion', None)
             metadata.pop('uid', None)
             metadata.pop('generation', None)
+
             # Step 8: Save modified manifest
             manifest_file = f"{self.agent.temp_manifest_dir}/{namespace}_{pod_name}.yaml"
             with open(manifest_file, 'w', encoding='utf-8') as f:
                 yaml.safe_dump(manifest, f)
+
             # Step 9: Generate remediation commands
             delete_cmd = f"kubectl delete pod {pod_name} -n {namespace}"
             apply_cmd = f"kubectl apply -f {manifest_file}"
+
             return manifest_file, [delete_cmd, apply_cmd]
+
         except Exception as e:
             self.agent.logger.error(f"Error modifying pod manifest: {e}")
             return None, []
+
 
     def extract_info(self, error_message: str) -> dict:
         pod_name, namespace, container_name = self._extract_pod_info(error_message)
@@ -1164,6 +1171,9 @@ class ErrorAnalyzerAgent(AssistantAgent):
                     errors = new_entries.strip().split('-' * 60)
                     for err in errors:
                         if not err.strip():
+                            continue
+                        if "OOMKilled" not in err.strip():
+                            self.logger.debug(f"Skipping non-OOMKilled Kubernetes log entry: {err.strip()[:100]}...")
                             continue
                         self.logger.info("Analyzing new Kubernetes error...")
                         result = asyncio.run(self.analyze_error(err.strip(), source="kubernetes"))

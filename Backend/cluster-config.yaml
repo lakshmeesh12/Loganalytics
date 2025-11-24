@@ -2,7 +2,7 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: crash-fix-cluster-2
+  name: crash-fix-cluster-3
   region: ap-south-1
   version: "1.30"
 

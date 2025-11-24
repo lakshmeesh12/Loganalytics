@@ -63,7 +63,7 @@ export function AppSidebar() {
         <div className="flex items-center gap-2">
           <Shield className="h-6 w-6 text-primary" />
           {state !== "collapsed" && (
-            <h2 className="text-lg font-semibold">LogAnalytics</h2>
+            <h2 className="text-lg font-semibold">Self Healing Infra</h2>
           )}
         </div>
         <button

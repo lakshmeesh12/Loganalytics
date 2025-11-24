@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query  # Add Query import
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 import threading
 import sys
@@ -58,7 +58,6 @@ class ConnectionManager:
         if not self.websocket_clients:
             print("No WebSocket clients to broadcast to", file=sys.stderr)
             return
-        # Suppress broadcast debug prints for LogForwarder agent
         suppress_prints = message.get('agent') == 'LogForwarder'
         if not suppress_prints:
             print(f"Broadcasting message: {message}", file=sys.stderr)
@@ -107,69 +106,100 @@ llm_config = {
     ]
 }
 
+# Global variables to store agent instances
+agents = {
+    "error_analyzer": None,
+    "fixer_agent": None,
+    "monitor_agent": None,
+    "forwarder_agent": None,
+    "email_agent": None,
+    "user_proxy": None,
+    "group_chat": None,
+    "chat_manager": None
+}
+
 @app.get("/start-agents")
 def start_agents(mode: str = Query("semi-autonomous", enum=["semi-autonomous", "autonomous"])):
     try:
-        global error_analyzer, fixer_agent, monitor_agent, forwarder_agent, email_agent, user_proxy, group_chat, chat_manager
+        global agents
 
         # Initialize agents based on mode
-        error_analyzer = ErrorAnalyzerAgent(name="ErrorAnalyzerAgent", llm_config=llm_config, ws_manager=manager)
-        fixer_agent = FixerAgent(name="FixerAgent", llm_config=llm_config, analyzer_agent=error_analyzer, ws_manager=manager)
-        error_analyzer.fixer_agent = fixer_agent
-        forwarder_agent = LogForwarderAgent(name="LogForwarderAgent", llm_config=llm_config, ws_manager=manager)
+        agents["error_analyzer"] = ErrorAnalyzerAgent(name="ErrorAnalyzerAgent", llm_config=llm_config, ws_manager=manager)
+        agents["fixer_agent"] = FixerAgent(name="FixerAgent", llm_config=llm_config, analyzer_agent=agents["error_analyzer"], ws_manager=manager)
+        agents["error_analyzer"].fixer_agent = agents["fixer_agent"]
+        agents["forwarder_agent"] = LogForwarderAgent(name="LogForwarderAgent", llm_config=llm_config, ws_manager=manager)
 
         if mode == "semi-autonomous":
-            email_agent = EmailAgent(name="EmailAgent", llm_config=llm_config, analyzer_agent=error_analyzer, ws_manager=manager)
-            monitor_agent = MonitorAgent(
+            agents["email_agent"] = EmailAgent(name="EmailAgent", llm_config=llm_config, analyzer_agent=agents["error_analyzer"], ws_manager=manager)
+            agents["monitor_agent"] = MonitorAgent(
                 name="MonitorAgent",
                 llm_config=llm_config,
-                analyzer_agent=error_analyzer,
-                email_agent=email_agent,
+                analyzer_agent=agents["error_analyzer"],
+                email_agent=agents["email_agent"],
                 ws_manager=manager,
                 mode=mode
             )
-            # Initialize group chat for semi-autonomous mode
-            user_proxy = UserProxyAgent(
+            agents["user_proxy"] = UserProxyAgent(
                 name="Supervisor",
                 code_execution_config={"use_docker": False},
                 human_input_mode="NEVER"
             )
-            group_chat = GroupChat(agents=[user_proxy, error_analyzer, fixer_agent, email_agent], messages=[], max_round=5)
-            chat_manager = GroupChatManager(groupchat=group_chat, llm_config=llm_config)
+            agents["group_chat"] = GroupChat(agents=[agents["user_proxy"], agents["error_analyzer"], agents["fixer_agent"], agents["email_agent"]], messages=[], max_round=5)
+            agents["chat_manager"] = GroupChatManager(groupchat=agents["group_chat"], llm_config=llm_config)
         else:  # autonomous mode
-            monitor_agent = MonitorAgent(
+            agents["monitor_agent"] = MonitorAgent(
                 name="MonitorAgent",
                 llm_config=llm_config,
-                analyzer_agent=error_analyzer,
-                email_agent=None,  # No EmailAgent in autonomous mode
+                analyzer_agent=agents["error_analyzer"],
+                email_agent=None,
                 ws_manager=manager,
                 mode=mode
             )
-            user_proxy = None
-            group_chat = None
-            chat_manager = None
 
         # Start agents
-        if forwarder_agent and forwarder_agent.conn:
-            threading.Thread(target=forwarder_agent.run, daemon=True).start()
-        if monitor_agent:
-            threading.Thread(target=monitor_agent.run, daemon=True).start()
-        if mode == "semi-autonomous" and email_agent:
-            threading.Thread(target=email_agent.run, daemon=True).start()
-        if error_analyzer:
-            threading.Thread(target=error_analyzer.run, daemon=True).start()
-        if fixer_agent:
-            threading.Thread(target=fixer_agent.run, daemon=True).start()
+        if agents["forwarder_agent"] and agents["forwarder_agent"].conn:
+            threading.Thread(target=agents["forwarder_agent"].run, daemon=True).start()
+        if agents["monitor_agent"]:
+            threading.Thread(target=agents["monitor_agent"].run, daemon=True).start()
+        if mode == "semi-autonomous" and agents["email_agent"]:
+            threading.Thread(target=agents["email_agent"].run, daemon=True).start()
+        if agents["error_analyzer"]:
+            threading.Thread(target=agents["error_analyzer"].run, daemon=True).start()
+        if agents["fixer_agent"]:
+            threading.Thread(target=agents["fixer_agent"].run, daemon=True).start()
 
         return {"status": f"All agents started successfully in {mode} mode"}
     except Exception as e:
         return {"status": f"Failed to start agents: {str(e)}"}
 
+@app.get("/stop-agents")
+def stop_agents():
+    try:
+        global agents
+        stopped_agents = []
+
+        # Stop each agent's run loop if it has a stop method
+        for agent_name, agent in agents.items():
+            if agent and hasattr(agent, 'stop'):
+                try:
+                    agent.stop()
+                    stopped_agents.append(agent_name)
+                except Exception as e:
+                    print(f"Error stopping {agent_name}: {str(e)}", file=sys.stderr)
+
+        # Clear agent references
+        for agent_name in agents:
+            agents[agent_name] = None
+
+        return {"status": f"Stopped agents: {', '.join(stopped_agents) if stopped_agents else 'No agents were running'}"}
+    except Exception as e:
+        return {"status": f"Failed to stop agents: {str(e)}"}
+
 @app.get("/start-logging")
 def start_logging():
-    if user_proxy and chat_manager:
-        user_proxy.initiate_chat(
-            chat_manager,
+    if agents["user_proxy"] and agents["chat_manager"]:
+        agents["user_proxy"].initiate_chat(
+            agents["chat_manager"],
             message="Start analyzing logs and fixing issues."
         )
         return {"status": "Chat initiated"}
@@ -219,7 +249,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket connection setup error: {str(e)}", file=sys.stderr)
         manager.disconnect(websocket)
-
 # main.py
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.middleware.cors import CORSMiddleware

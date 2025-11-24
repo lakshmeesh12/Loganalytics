@@ -29,3 +29,4 @@ google-auth-httplib2
 google-api-python-client
 
 databricks-sql-connector
+paramiko
